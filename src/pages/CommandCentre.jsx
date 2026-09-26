@@ -47,14 +47,18 @@ export default function CommandCentre() {
     const critical = regionalList.filter((r) => r.forecast.alertLevel === 'Critical').length;
     const high = regionalList.filter((r) => r.forecast.alertLevel === 'High').length;
     const moderate = regionalList.filter((r) => r.forecast.alertLevel === 'Moderate').length;
-    const avgAifs = total > 0 ? Math.round(regionalList.reduce((acc, r) => acc + r.forecast.models.aifs.weight, 0) / total) : 45;
-    const avgIfs = total > 0 ? Math.round(regionalList.reduce((acc, r) => acc + r.forecast.models.ifs.weight, 0) / total) : 30;
-    const avgGfs = total > 0 ? Math.round(regionalList.reduce((acc, r) => acc + r.forecast.models.gfs.weight, 0) / total) : 25;
-    const top = avgAifs >= avgIfs && avgAifs >= avgGfs
-      ? `AIFS (${avgAifs}%)`
-      : avgGfs >= avgIfs
-      ? `GFS (${avgGfs}%)`
-      : `IFS (${avgIfs}%)`;
+    const avgAifs = total > 0 ? Math.round(regionalList.reduce((acc, r) => acc + (r.forecast.models.aifs?.weight || 0), 0) / total) : 40;
+    const avgIfs = total > 0 ? Math.round(regionalList.reduce((acc, r) => acc + (r.forecast.models.ifs?.weight || 0), 0) / total) : 25;
+    const avgGfs = total > 0 ? Math.round(regionalList.reduce((acc, r) => acc + (r.forecast.models.gfs?.weight || 0), 0) / total) : 20;
+    const avgIcon = total > 0 ? Math.round(regionalList.reduce((acc, r) => acc + (r.forecast.models.icon?.weight || 0), 0) / total) : 15;
+    const modelAverages = [
+      { name: 'AIFS', val: avgAifs },
+      { name: 'IFS', val: avgIfs },
+      { name: 'GFS', val: avgGfs },
+      { name: 'ICON', val: avgIcon },
+    ];
+    modelAverages.sort((a, b) => b.val - a.val);
+    const top = `${modelAverages[0].name} (${modelAverages[0].val}%)`;
     const avgReduction = total > 0
       ? (regionalList.reduce((acc, r) => acc + (r.forecast.models.blend.rmseReductionPct || 0), 0) / total).toFixed(1)
       : '24.8';

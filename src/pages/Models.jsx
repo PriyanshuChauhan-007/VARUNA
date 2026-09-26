@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import { useStore } from '../store/useStore';
 import { REGIONS, VARIABLES, MODELS, getDeterministicForecast } from '../data/mockData.js';
+import { getRegionalRegimeVerification } from '../data/scientific_reports.js';
 import ChartCard from '../components/shared/ChartCard';
 
 export default function Models() {
@@ -23,6 +24,7 @@ export default function Models() {
   const forecast = getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime);
   const { models, region, variable } = forecast;
 
+  // Complete 5-member operational ensemble table: IFS, AIFS, GFS, ICON, VARUNA BLEND
   const tableData = [
     {
       ...MODELS[0], // IFS
@@ -61,7 +63,19 @@ export default function Models() {
       isBlend: false,
     },
     {
-      ...MODELS[3], // BLEND
+      ...MODELS[3], // ICON
+      forecastVal: models.icon.value,
+      rmse: models.icon.rmse,
+      mae: models.icon.mae,
+      bias: models.icon.bias,
+      correlation: models.icon.correlation,
+      weight: `${models.icon.weight}%`,
+      samples: models.icon.sampleCount,
+      latency: models.icon.latency,
+      isBlend: false,
+    },
+    {
+      ...MODELS[4], // BLEND
       forecastVal: models.blend.value,
       rmse: models.blend.rmse,
       mae: models.blend.mae,
@@ -74,14 +88,8 @@ export default function Models() {
     },
   ];
 
-  // Regime capability matrix
-  const regimeCapability = [
-    { regime: 'Orographic Precip', IFS: 72, AIFS: 91, GFS: 68, BLEND: 96 },
-    { regime: 'Convective Rain Cells', IFS: 65, AIFS: 88, GFS: 82, BLEND: 94 },
-    { regime: 'Thermal Heat Depression', IFS: 84, AIFS: 94, GFS: 76, BLEND: 97 },
-    { regime: 'Coastal Gale Influx', IFS: 81, AIFS: 89, GFS: 74, BLEND: 95 },
-    { regime: 'Synoptic Pressure Wave', IFS: 89, AIFS: 92, GFS: 86, BLEND: 98 },
-  ];
+  // Empirical regime verification data from verified Python pipeline (N = 3,507 per zone)
+  const regimeVerificationData = getRegionalRegimeVerification();
 
   return (
     <div className="h-full overflow-y-auto p-4 md:p-6 space-y-6 bg-[var(--color-surface)]">
@@ -173,7 +181,7 @@ export default function Models() {
             </p>
           </div>
           <span className="font-data text-scale-xs bg-[var(--color-surface)] border border-[var(--color-border)] px-2.5 py-1 rounded-md text-[var(--color-text-secondary)] font-semibold">
-            N = 1,420 Reference Verifications
+            N = 4,512 Held-Out Test Records (21,042 Total Verified Samples)
           </span>
         </div>
 
@@ -187,7 +195,7 @@ export default function Models() {
                 <th className="py-3 px-3 text-right">RMSE ({forecast.unit})</th>
                 <th className="py-3 px-3 text-right">MAE ({forecast.unit})</th>
                 <th className="py-3 px-3 text-right">Bias ({forecast.unit})</th>
-                <th className="py-3 px-3 text-right">Correlation (r)</th>
+                <th className="py-3 px-3 text-right">Pearson Correlation (r)</th>
                 <th className="py-3 px-4 text-right">Dynamic Weight</th>
                 <th className="py-3 px-3 text-right">Inference Latency</th>
               </tr>
@@ -216,16 +224,16 @@ export default function Models() {
                   <td className="py-3 px-3 text-right font-bold text-[var(--color-text-primary)] text-scale-sm">
                     {row.forecastVal}
                   </td>
-                  <td className={`py-3 px-3 text-right font-bold ${row.isBlend ? 'text-emerald-700' : 'text-slate-600'}`}>
+                  <td className={`py-3 px-3 text-right font-bold ${row.isBlend ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300'}`}>
                     {row.rmse}
                   </td>
-                  <td className="py-3 px-3 text-right text-slate-500">
+                  <td className="py-3 px-3 text-right text-slate-500 dark:text-slate-400">
                     {row.mae}
                   </td>
-                  <td className="py-3 px-3 text-right text-slate-500">
+                  <td className="py-3 px-3 text-right text-slate-500 dark:text-slate-400">
                     {row.bias > 0 ? `+${row.bias}` : row.bias}
                   </td>
-                  <td className={`py-3 px-3 text-right font-bold ${row.isBlend ? 'text-emerald-700' : 'text-slate-600'}`}>
+                  <td className={`py-3 px-3 text-right font-bold ${row.isBlend ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300'}`}>
                     {row.correlation}
                   </td>
                   <td className="py-3 px-4 text-right">
@@ -251,26 +259,25 @@ export default function Models() {
 
       {/* Meteorological Regime Skill Comparison */}
       <ChartCard
-        title="Model Skill Score by Weather Regime (0-100 Benchmark)"
-        subtitle="Verification against reference reanalysis datasets across Indian synoptic regimes (IMD AWS integration pending)"
+        title="Empirical Weather Regime Verification Error (RMSE °C)"
+        subtitle="Verification against ERA5 reanalysis across Indian synoptic regimes (N = 3,507 samples per zone; lower is better)"
         badge="Regime Benchmark"
         span="full"
       >
         <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={regimeCapability} margin={{ top: 16, right: 24, bottom: 20, left: 10 }}>
+          <BarChart data={regimeVerificationData} margin={{ top: 16, right: 24, bottom: 20, left: 10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.15)" vertical={false} />
             <XAxis
               dataKey="regime"
-              tick={{ fontSize: 11, fill: 'var(--color-text-tertiary)', fontFamily: "'Inter', sans-serif" }}
+              tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)', fontFamily: "'Inter', sans-serif" }}
               tickLine={false}
               axisLine={{ stroke: 'var(--color-border)' }}
             />
             <YAxis
-              domain={[50, 100]}
               tick={{ fontSize: 11, fill: 'var(--color-text-tertiary)', fontFamily: "'JetBrains Mono', monospace" }}
               tickLine={false}
               axisLine={{ stroke: 'var(--color-border)' }}
-              unit=" pts"
+              unit=" °C"
             />
             <Tooltip
               contentStyle={{
@@ -285,7 +292,8 @@ export default function Models() {
             <Bar dataKey="IFS" name="ECMWF IFS (9km NWP)" fill="#2563EB" radius={[4, 4, 0, 0]} />
             <Bar dataKey="AIFS" name="ECMWF AIFS (Deep Learning)" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
             <Bar dataKey="GFS" name="NOAA GFS (FV3 NWP)" fill="#059669" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="BLEND" name="VARUNA BLEND (Adaptive Hybrid)" fill="#F5C518" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="ICON" name="DWD ICON (13km NWP)" fill="#F59E0B" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="BLEND" name="VARUNA BLEND (Adaptive Hybrid)" fill="#D97706" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </ChartCard>

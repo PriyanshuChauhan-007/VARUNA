@@ -5,4 +5,4 @@ full_benchmark,ncep_gfs,2.8214,1.9914,1.389,0.9326,21042
 full_benchmark,dwd_icon,1.9704,1.3958,0.3017,0.9524,21042
 full_benchmark,equal_blend,1.4192,1.0373,0.6119,0.9798,21042
 full_benchmark,inv_rmse_blend,1.251,0.9103,0.4067,0.9828,21042
-full_benchmark,varuna_blend,1.0145,0.7258,0.1625,0.9877,21042
+full_benchmark,varuna_blend,1.0169,0.7291,0.1698,0.9876,21042

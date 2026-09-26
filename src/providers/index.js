@@ -5,6 +5,7 @@ import { APPLICATION_MODES, PROVIDER_STATUS } from './types.js';
 import { ECMWF_IFS_PROVIDER, fetchEcmwfIfsForecast } from './ecmwf_ifs.js';
 import { ECMWF_AIFS_PROVIDER, fetchEcmwfAifsForecast } from './ecmwf_aifs.js';
 import { NCEP_GFS_PROVIDER, fetchNcepGfsForecast } from './ncep_gfs.js';
+import { DWD_ICON_PROVIDER, fetchDwdIconForecast } from './dwd_icon.js';
 import { IMD_PROVIDER } from './imd.js';
 import { generateDemoMemberForecasts } from './demo_provider.js';
 
@@ -14,28 +15,63 @@ export {
   ECMWF_IFS_PROVIDER,
   ECMWF_AIFS_PROVIDER,
   NCEP_GFS_PROVIDER,
+  DWD_ICON_PROVIDER,
   IMD_PROVIDER,
+  fetchEcmwfIfsForecast,
+  fetchEcmwfAifsForecast,
+  fetchNcepGfsForecast,
+  fetchDwdIconForecast,
 };
 
 export const ALL_PROVIDERS = [
   ECMWF_IFS_PROVIDER,
   ECMWF_AIFS_PROVIDER,
   NCEP_GFS_PROVIDER,
+  DWD_ICON_PROVIDER,
   IMD_PROVIDER,
 ];
 
 /**
  * Return system-level provider ingestion statuses
  * Accurately reflects actual system state without deceptive "100% Ingested" claims
+ * Uses verified backend dataset counts (21,042 paired points) in Replay/Demo
  */
-export function getSystemFeedsCatalog(activeMode = APPLICATION_MODES.DEMO) {
+export function getSystemFeedsCatalog(activeMode = APPLICATION_MODES.DEMO, backendData = null) {
   const isDemo = activeMode === APPLICATION_MODES.DEMO;
   const isReplay = activeMode === APPLICATION_MODES.REPLAY;
+  const isLive = activeMode === APPLICATION_MODES.LIVE;
 
-  const nwpStatus = isDemo ? 'Demo Provider' : isReplay ? 'Replay Archive' : 'External API Standby';
-  const nwpHealth = isDemo ? 'Demo Standby' : isReplay ? 'Verified Reference' : 'Open-Meteo Gateway';
-  const nwpLatency = isDemo ? 'Simulated 00z Run' : isReplay ? 'Archived 00z Cycle' : 'Pending Live Sync';
-  const nwpPoints = isDemo || isReplay ? 1420 : 0;
+  // If live mode has verified backend response with feeds, use it directly
+  if (isLive && backendData?.feeds && Array.isArray(backendData.feeds)) {
+    return backendData.feeds.map((f) => ({
+      name: f.name,
+      type: f.type,
+      cycle: f.cycle,
+      latency: f.latency_ms !== null && f.latency_ms !== undefined ? `${f.latency_ms.toFixed(1)} ms` : 'Unavailable',
+      resolution: f.resolution,
+      status: f.status === 'ONLINE' ? 'Live' : f.status === 'INTEGRATION PENDING' ? 'Integration Pending' : f.status === 'NOT CONFIGURED' ? 'Not Configured' : 'Unavailable',
+      health: f.status === 'ONLINE' ? 'Open-Meteo Gateway' : f.status === 'INTEGRATION PENDING' ? 'MoES Auth Required' : 'Unavailable',
+      verificationPoints: f.paired_verification_records ?? 0,
+      forecastRecords: f.forecast_records ?? 0,
+      referenceRecords: f.reference_records ?? 0,
+      lastSync: f.last_successful_sync || 'Unavailable',
+      latestInit: f.latest_initialization_time || 'Unavailable',
+      latestValid: f.latest_valid_time || 'Unavailable',
+      source: f.source || 'Open-Meteo Gateway',
+      mode: activeMode,
+      authRequired: Boolean(f.auth_required),
+    }));
+  }
+
+  // Baseline verified dataset counts from empirical multi-season pipeline
+  const benchmarkVerifiedPoints = 21042;
+  const benchmarkReferencePoints = 5616; // 936 valid hourly timestamps x 6 regions
+
+  const nwpStatus = isDemo ? 'Demo Provider' : isReplay ? 'Replay Archive' : 'Unavailable';
+  const nwpHealth = isDemo ? 'Demo Standby' : isReplay ? 'Verified Reference' : 'Connection Standby';
+  const nwpLatency = isDemo ? 'Simulated 00z Run' : isReplay ? 'Archived 00z Cycle' : 'Unavailable';
+  const nwpPoints = isDemo || isReplay ? benchmarkVerifiedPoints : 0;
+  const nwpLastSync = isDemo ? 'DEMO MODE' : isReplay ? '2026-09-26T11:31:34Z (Verified Run)' : 'Unavailable';
 
   return [
     {
@@ -47,6 +83,12 @@ export function getSystemFeedsCatalog(activeMode = APPLICATION_MODES.DEMO) {
       status: nwpStatus,
       health: nwpHealth,
       verificationPoints: nwpPoints,
+      forecastRecords: nwpPoints,
+      referenceRecords: 0,
+      lastSync: nwpLastSync,
+      latestInit: isDemo ? '2026-09-26T00:00:00Z' : isReplay ? 'Multi-Season Baseline' : 'Unavailable',
+      latestValid: isDemo ? '2026-09-28T00:00:00Z' : isReplay ? 'Multi-Season Baseline' : 'Unavailable',
+      source: 'ECMWF Open Data via Open-Meteo Gateway',
       mode: activeMode,
       authRequired: false,
     },
@@ -59,18 +101,66 @@ export function getSystemFeedsCatalog(activeMode = APPLICATION_MODES.DEMO) {
       status: nwpStatus,
       health: nwpHealth,
       verificationPoints: nwpPoints,
+      forecastRecords: nwpPoints,
+      referenceRecords: 0,
+      lastSync: nwpLastSync,
+      latestInit: isDemo ? '2026-09-26T00:00:00Z' : isReplay ? 'Multi-Season Baseline' : 'Unavailable',
+      latestValid: isDemo ? '2026-09-28T00:00:00Z' : isReplay ? 'Multi-Season Baseline' : 'Unavailable',
+      source: 'ECMWF Open Data via Open-Meteo Gateway',
       mode: activeMode,
       authRequired: false,
     },
     {
       name: 'NOAA GFS Global 13km',
       type: 'Operational NWP (FV3 Core)',
-      cycle: '00z / 06z / 12z / 18z',
+      cycle: '00z / 06z / 12z / 18z Cycle',
       latency: nwpLatency,
-      resolution: '0.25° (~28 km) / 13 km Native',
+      resolution: '0.13° (~13 km)',
       status: nwpStatus,
       health: nwpHealth,
       verificationPoints: nwpPoints,
+      forecastRecords: nwpPoints,
+      referenceRecords: 0,
+      lastSync: nwpLastSync,
+      latestInit: isDemo ? '2026-09-26T00:00:00Z' : isReplay ? 'Multi-Season Baseline' : 'Unavailable',
+      latestValid: isDemo ? '2026-09-28T00:00:00Z' : isReplay ? 'Multi-Season Baseline' : 'Unavailable',
+      source: 'NOAA NCEP NOMADS via Open-Meteo Gateway',
+      mode: activeMode,
+      authRequired: false,
+    },
+    {
+      name: 'DWD ICON Global 13km',
+      type: 'Icosahedral Non-Hydrostatic NWP (Deutscher Wetterdienst)',
+      cycle: '00z / 06z / 12z / 18z Cycle',
+      latency: nwpLatency,
+      resolution: '0.12° (~13 km)',
+      status: nwpStatus,
+      health: nwpHealth,
+      verificationPoints: nwpPoints,
+      forecastRecords: nwpPoints,
+      referenceRecords: 0,
+      lastSync: nwpLastSync,
+      latestInit: isDemo ? '2026-09-26T00:00:00Z' : isReplay ? 'Multi-Season Baseline' : 'Unavailable',
+      latestValid: isDemo ? '2026-09-28T00:00:00Z' : isReplay ? 'Multi-Season Baseline' : 'Unavailable',
+      source: 'Deutscher Wetterdienst Open Data via Open-Meteo Gateway',
+      mode: activeMode,
+      authRequired: false,
+    },
+    {
+      name: 'ERA5 Reanalysis Reference Dataset',
+      type: 'Global Climate Reanalysis Benchmark (ECMWF / Copernicus)',
+      cycle: 'Continuous Historical Verification',
+      latency: isDemo || isReplay ? 'Hourly Reanalysis' : 'Unavailable',
+      resolution: '0.25° (~28 km)',
+      status: isDemo ? 'Demo Reference' : isReplay ? 'Replay Archive' : 'Unavailable',
+      health: 'ECMWF Copernicus Climate Change Service',
+      verificationPoints: isDemo || isReplay ? benchmarkVerifiedPoints : 0,
+      forecastRecords: 0,
+      referenceRecords: isDemo || isReplay ? benchmarkReferencePoints : 0,
+      lastSync: nwpLastSync,
+      latestInit: 'Continuous Reanalysis Archive',
+      latestValid: isDemo || isReplay ? '2026-09-08T23:00:00Z' : 'Unavailable',
+      source: 'ECMWF / Copernicus Climate Change Service via Open-Meteo Archive API',
       mode: activeMode,
       authRequired: false,
     },
@@ -83,6 +173,12 @@ export function getSystemFeedsCatalog(activeMode = APPLICATION_MODES.DEMO) {
       status: 'Integration Pending',
       health: 'MoES Auth Required',
       verificationPoints: 0,
+      forecastRecords: 0,
+      referenceRecords: 0,
+      lastSync: 'None',
+      latestInit: 'None',
+      latestValid: 'None',
+      source: 'IMD MoES Institutional Gateway (Direct Ingestion Pending)',
       mode: activeMode,
       authRequired: true,
     },
@@ -95,6 +191,12 @@ export function getSystemFeedsCatalog(activeMode = APPLICATION_MODES.DEMO) {
       status: 'Not Configured',
       health: 'MOSDAC Auth Required',
       verificationPoints: 0,
+      forecastRecords: 0,
+      referenceRecords: 0,
+      lastSync: 'None',
+      latestInit: 'None',
+      latestValid: 'None',
+      source: 'ISRO MOSDAC Auth Gateway (Credentials Not Configured)',
       mode: activeMode,
       authRequired: true,
     },

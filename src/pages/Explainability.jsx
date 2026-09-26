@@ -170,7 +170,7 @@ export default function Explainability() {
             </h3>
           </div>
           <p className="text-scale-xs text-[var(--color-text-secondary)] leading-relaxed mb-3">
-            Weights are constrained to sum to 100%: <strong>AIFS: {models.aifs.weight}%</strong>, <strong>GFS: {models.gfs.weight}%</strong>, <strong>IFS: {models.ifs.weight}%</strong>, resulting in an optimal consensus forecast of <strong className="text-amber-700 dark:text-amber-400 font-data">{models.blend.value} {forecast.unit}</strong>.
+            Weights are constrained to sum to 100%: <strong>AIFS: {models.aifs.weight}%</strong>, <strong>GFS: {models.gfs.weight}%</strong>, <strong>IFS: {models.ifs.weight}%</strong>{models.icon ? <>, <strong>ICON: {models.icon.weight}%</strong></> : null}, resulting in an optimal consensus forecast of <strong className="text-amber-700 dark:text-amber-400 font-data">{models.blend.value} {forecast.unit}</strong>.
           </p>
           <div className="p-2.5 bg-[var(--color-surface)] rounded-[var(--radius-md)] border border-[var(--color-border)] text-[11px] font-data text-emerald-600 font-semibold">
             Status: Nominal Convergence (Safety Level 0)

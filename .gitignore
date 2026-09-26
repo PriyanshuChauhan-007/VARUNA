@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python Bytecode & Runtime
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Runtime Caches & Local Databases
+backend/cache/*.sqlite3
+backend/cache/*.sqlite
+backend/**/__pycache__/

@@ -172,7 +172,7 @@ export default function Forecast() {
             </span>
           </div>
           <div className="mt-1 text-[11px] text-[var(--color-text-secondary)]">
-            N={models.blend.sampleCount} Reference Grid Points
+            N={models.blend.sampleCount.toLocaleString()} Reference Forecast Records
           </div>
         </div>
       </div>
@@ -180,7 +180,7 @@ export default function Forecast() {
       {/* Main Multi-Model Diurnal Cycle Chart (matching THERMOS Analytics) */}
       <ChartCard
         title={`24-Hour Diurnal Evolution — ${region.name} (${selectedLeadTime})`}
-        subtitle={`Synchronous comparison of ECMWF IFS, AIFS, NOAA GFS, and VARUNA Blend for ${variable.label} (${variable.unit})`}
+        subtitle={`Synchronous comparison of ECMWF IFS, AIFS, NOAA GFS, DWD ICON, and VARUNA Blend for ${variable.label} (${variable.unit})`}
         badge={`Init: ${forecast.initializationTime ? forecast.initializationTime.slice(0, 10) : '2026-09-26'} 00z · Valid: ${forecast.validTime.slice(0, 10)} ${forecast.validTime.slice(11, 16)} UTC (+${selectedLeadTime})`}
         span="full"
       >
@@ -235,6 +235,14 @@ export default function Forecast() {
               stroke="#059669"
               strokeWidth={2}
               dot={{ r: 3, fill: '#059669' }}
+            />
+            <Line
+              type="monotone"
+              dataKey="ICON"
+              name="DWD ICON (13km NWP)"
+              stroke="#F59E0B"
+              strokeWidth={2}
+              dot={{ r: 3, fill: '#F59E0B' }}
             />
             <Line
               type="monotone"
@@ -322,6 +330,19 @@ export default function Forecast() {
                 <div className="h-full bg-blue-600 rounded-full transition-all" style={{ width: `${models.ifs.weight}%` }} />
               </div>
             </div>
+
+            {/* ICON */}
+            {models.icon && (
+              <div>
+                <div className="flex justify-between text-scale-xs mb-1 font-semibold">
+                  <span className="text-amber-500 font-data">DWD ICON — Global NWP (13km)</span>
+                  <span className="font-data">{models.icon.value} {forecast.unit} ({models.icon.weight}%)</span>
+                </div>
+                <div className="w-full h-3 bg-[var(--color-surface-muted)] rounded-full overflow-hidden border border-[var(--color-border)]">
+                  <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${models.icon.weight}%` }} />
+                </div>
+              </div>
+            )}
 
             {/* Bottom summary */}
             <div className="p-3 bg-[var(--color-accent-subtle)] border border-amber-300 rounded-[var(--radius-md)] flex items-center justify-between text-scale-xs">

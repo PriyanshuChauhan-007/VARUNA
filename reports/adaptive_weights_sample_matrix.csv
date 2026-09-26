@@ -1,0 +1,11 @@
+region_id,season,valid_time,lead_time_hours,regime,ifs_weight,aifs_weight,gfs_weight,icon_weight,sum_check
+delhi_ncr,Winter,2026-01-14T00:00,24,Western Disturbance / Upper Trough,40,37,1,22,100
+rajasthan_thar,Winter,2026-01-14T00:00,120,Western Disturbance / Upper Trough,36,28,7,29,100
+mumbai_coastal,Pre-Monsoon,2026-04-14T00:00,48,Subtropical Heatwave / Low-Level Thermal Ridge,51,41,3,5,100
+bengaluru_deccan,Pre-Monsoon,2026-04-15T14:00,72,Subtropical Heatwave / Low-Level Thermal Ridge,37,16,7,40,100
+western_ghats,Monsoon,2026-07-08T12:00,24,Monsoonal Break / Trough Shift,56,2,29,13,100
+odisha_coast,Monsoon,2026-07-08T12:00,48,Monsoonal Break / Trough Shift,38,29,16,17,100
+delhi_ncr,Monsoon,2026-07-08T12:00,120,Monsoonal Break / Trough Shift,22,56,2,20,100
+delhi_ncr,Post-Monsoon,2026-09-05T00:00,72,Monsoonal Break / Trough Shift,22,40,11,27,100
+mumbai_coastal,Post-Monsoon,2026-09-05T00:00,120,Monsoonal Break / Trough Shift,33,26,20,21,100
+rajasthan_thar,Post-Monsoon,2026-09-05T00:00,24,Monsoonal Break / Trough Shift,28,20,33,19,100
