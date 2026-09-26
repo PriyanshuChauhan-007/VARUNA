@@ -9,6 +9,7 @@ from ..config import CANONICAL_REGIONS, CANONICAL_VARIABLES, CANONICAL_MODELS
 from ..providers.open_meteo import OpenMeteoProvider
 from ..science.meta_model import VarunaMetaModel
 from ..science.weighting import blend_member_forecasts
+from ..science.regime import classify_synoptic_regime
 
 router = APIRouter(prefix="/api/forecast", tags=["Forecast"])
 provider = OpenMeteoProvider()
@@ -47,22 +48,38 @@ async def get_forecast(
             points_by_time[t_iso]["members"][pt.model] = pt.value
 
         # Calculate blend for each timestep
-        now_dt = datetime.now(timezone.utc)
         timeline = []
         for t_iso in sorted(points_by_time.keys()):
             item = points_by_time[t_iso]
             members = item["members"]
             lead_h = item["lead_time_hours"]
+            t_dt = datetime.fromisoformat(t_iso)
             
-            # Contextual prediction
+            # Meteorological conditioning for synoptic regime classification
+            t_val = members.get("ecmwf_ifs", 25.0) if variable == "temperature" else 25.0
+            p_val = members.get("ecmwf_ifs", 1010.0) if variable == "pressure" else 1010.0
+            w_val = members.get("ecmwf_ifs", 10.0) if variable == "wind_speed" else 10.0
+            r_val = members.get("ecmwf_ifs", 0.0) if variable == "rainfall" else 0.0
+
+            regime_info = classify_synoptic_regime(
+                lat=reg.lat,
+                lng=reg.lng,
+                valid_time=t_dt,
+                temp_2m=t_val,
+                surface_pressure=p_val,
+                wind_speed=w_val,
+                precipitation=r_val
+            )
+            
+            # Contextual prediction with genuine diurnal solar hour, month, day-of-year, and synoptic regime
             weights_res = meta_model.predict_adaptive_weights(
                 lat=reg.lat,
                 lon=reg.lng,
                 elev=reg.elevation_m,
-                day_of_year=now_dt.timetuple().tm_yday,
-                hour=item["lead_time_hours"] % 24,
-                month=now_dt.month,
-                regime_idx=0,
+                day_of_year=t_dt.timetuple().tm_yday,
+                hour=t_dt.hour,
+                month=t_dt.month,
+                regime_idx=regime_info["regime_index"],
                 model_values=members,
                 lead_time_hours=lead_h
             )

@@ -31,10 +31,11 @@ export default function Forecast() {
     return getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime);
   }, [selectedRegionId, selectedVariable, selectedLeadTime]);
 
-  const [forecast, setForecast] = useState(fallbackBaseline);
-  const [loading, setLoading] = useState(false);
-  const [isFallback, setIsFallback] = useState(false);
-  const [fallbackReason, setFallbackReason] = useState(null);
+  const [forecast, setForecast] = useState(effectiveMode === 'DEMO' ? fallbackBaseline : null);
+  const [loading, setLoading] = useState(effectiveMode !== 'DEMO');
+  const [isLive, setIsLive] = useState(false);
+  const [isFallback, setIsFallback] = useState(effectiveMode === 'DEMO');
+  const [fallbackReason, setFallbackReason] = useState(effectiveMode === 'DEMO' ? 'User-selected DEMO mode active' : null);
 
   // Authoritative live data fetch from Python FastAPI backend (/api/forecast)
   useEffect(() => {
@@ -47,6 +48,7 @@ export default function Forecast() {
       if (effectiveMode === 'DEMO') {
         const demoData = getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, 'DEMO');
         setForecast(demoData);
+        setIsLive(false);
         setIsFallback(true);
         setFallbackReason('User-selected DEMO mode active');
         setLoading(false);
@@ -63,6 +65,7 @@ export default function Forecast() {
         .then((data) => {
           if (!cancelled) {
             setForecast(data);
+            setIsLive(true);
             setIsFallback(false);
             setFallbackReason(null);
             setLoading(false);
@@ -73,6 +76,7 @@ export default function Forecast() {
             // Explicit fallback on network or backend API failure (Phase 9)
             const fallbackData = getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, 'DEMO');
             setForecast(fallbackData);
+            setIsLive(false);
             setIsFallback(true);
             setFallbackReason(`Backend offline: ${err.message || 'API unreachable'}. Displaying baseline fallback.`);
             setLoading(false);
@@ -85,6 +89,7 @@ export default function Forecast() {
     };
   }, [selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode]);
 
+  const displayForecast = forecast || fallbackBaseline;
   const {
     region = {},
     variable = {},
@@ -95,7 +100,9 @@ export default function Forecast() {
     unit = '',
     whyThisBlend = {},
     horizonNote = null,
-  } = forecast || {};
+  } = displayForecast || {};
+
+  const formattedLead = selectedLeadTime.startsWith('+') ? selectedLeadTime : `+${selectedLeadTime}`;
 
   // Compute ensemble spread across available member forecasts
   const memberValues = [
@@ -173,17 +180,31 @@ export default function Forecast() {
       <div className={`p-3 rounded-[var(--radius-md)] border flex items-center justify-between text-scale-xs transition-colors ${
         isFallback
           ? 'bg-amber-500/10 border-amber-400 text-amber-800 dark:text-amber-200'
-          : 'bg-emerald-500/10 border-emerald-400 text-emerald-800 dark:text-emerald-200'
+          : isLive
+            ? 'bg-emerald-500/10 border-emerald-400 text-emerald-800 dark:text-emerald-200'
+            : 'bg-blue-500/10 border-blue-400 text-blue-800 dark:text-blue-200'
       }`}>
         <div className="flex items-center gap-2">
-          <span className={`w-2.5 h-2.5 rounded-full ${isFallback ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
+          <span className={`w-2.5 h-2.5 rounded-full ${
+            isFallback
+              ? 'bg-amber-500'
+              : isLive
+                ? 'bg-emerald-500 animate-pulse'
+                : 'bg-blue-500 animate-pulse'
+          }`} />
           <span className="font-bold tracking-wide">
-            {isFallback ? 'REPLAY / DEMO FALLBACK' : 'LIVE OPERATIONAL STREAM'}
+            {isFallback
+              ? 'REPLAY / DEMO FALLBACK'
+              : isLive
+                ? 'LIVE OPERATIONAL STREAM'
+                : 'CONNECTING TO LIVE BACKEND'}
           </span>
           <span className="hidden sm:inline text-[var(--color-text-secondary)]">
             {isFallback
               ? `— ${fallbackReason || 'Baseline fallback active; not live scientific output'}`
-              : '— Connected to Python FastAPI /api/forecast (ECMWF IFS, AIFS, NOAA GFS, DWD ICON via Open-Meteo Gateway)'}
+              : isLive
+                ? '— Connected to Python FastAPI /api/forecast (ECMWF IFS, AIFS, NOAA GFS, DWD ICON via Open-Meteo Gateway)'
+                : '— Handshaking with FastAPI /api/forecast gateway...'}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -193,7 +214,7 @@ export default function Forecast() {
             </span>
           )}
           <span className="font-data text-[11px] font-bold px-2 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)]">
-            {isFallback ? 'FALLBACK' : 'LIVE 200 OK'}
+            {isFallback ? 'FALLBACK' : isLive ? 'LIVE 200 OK' : 'CONNECTING'}
           </span>
         </div>
       </div>
@@ -251,7 +272,7 @@ export default function Forecast() {
             </span>
           </div>
           <div className="mt-1 text-[11px] text-[var(--color-text-secondary)]">
-            Contextual Hybrid Blend (+{selectedLeadTime})
+            Contextual Hybrid Blend ({formattedLead})
           </div>
         </div>
 
@@ -287,7 +308,7 @@ export default function Forecast() {
           <div className="mt-1 text-[11px] text-[var(--color-text-secondary)] truncate">
             {whyThisBlend.topModel?.error !== undefined
               ? `Est. Contextual Error: ${whyThisBlend.topModel.error} ${unit}`
-              : `Weighted Reliability Allocation (+${selectedLeadTime})`}
+              : `Weighted Reliability Allocation (${formattedLead})`}
           </div>
         </div>
 
@@ -312,9 +333,9 @@ export default function Forecast() {
 
       {/* Main Multi-Model Diurnal Cycle & Horizon Chart */}
       <ChartCard
-        title={`Forecast Evolution & Member Trajectories — ${region.name || 'Selected Region'} (${selectedLeadTime})`}
+        title={`Forecast Evolution & Member Trajectories — ${region.name || 'Selected Region'} (${formattedLead})`}
         subtitle={`Synchronous progression of ECMWF IFS, ECMWF AIFS, NOAA GFS, DWD ICON, and VARUNA Blend for ${variable.label || 'Variable'} (${unit})`}
-        badge={`Init: ${forecast.initializationTime ? forecast.initializationTime.slice(0, 10) : '2026-09-26'} 00z · Horizon: +${selectedLeadTime}`}
+        badge={`Init: ${displayForecast.initializationTime ? displayForecast.initializationTime.slice(0, 10) : '2026-09-26'} 00z · Horizon: ${formattedLead}`}
         span="full"
       >
         <ResponsiveContainer width="100%" height={340}>
@@ -340,6 +361,13 @@ export default function Forecast() {
                 fontSize: '12px',
                 boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
                 fontFamily: "'JetBrains Mono', monospace",
+              }}
+              labelFormatter={(label, items) => {
+                const pt = items?.[0]?.payload;
+                if (pt?.valid_time) {
+                  return `Valid: ${pt.valid_time.replace('T', ' ').slice(0, 16)} UTC (+${pt.lead_time_hours}h lead)`;
+                }
+                return label;
               }}
             />
             <Legend
@@ -496,7 +524,7 @@ export default function Forecast() {
                     </div>
                     <div className="flex items-center gap-3 font-data text-scale-xs">
                       <span className="text-[var(--color-text-primary)] font-bold">
-                        Forecast: {valueVal} {unit} <span className="text-[var(--color-text-tertiary)] font-normal">(+{selectedLeadTime})</span>
+                        Forecast: {valueVal} {unit} <span className="text-[var(--color-text-tertiary)] font-normal">({formattedLead})</span>
                       </span>
                       <span className="px-2 py-0.5 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)] font-bold">
                         Weight: {weightVal}%
@@ -524,7 +552,7 @@ export default function Forecast() {
                 </span>
               </div>
               <div className="font-data font-bold text-amber-700 text-scale-base sm:text-scale-lg">
-                {models.blend?.value !== undefined ? Number(models.blend.value).toFixed(1) : '--'} {unit} <span className="text-scale-xs text-[var(--color-text-tertiary)] font-normal">(+{selectedLeadTime})</span>
+                {models.blend?.value !== undefined ? Number(models.blend.value).toFixed(1) : '--'} {unit} <span className="text-scale-xs text-[var(--color-text-tertiary)] font-normal">({formattedLead})</span>
               </div>
             </div>
 

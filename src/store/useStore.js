@@ -49,9 +49,9 @@ export const useStore = create((set, get) => ({
   },
 
   // System Mode (Section 12 & 18): 'DEMO' | 'LIVE' | 'REPLAY'
-  // Default is DEMO as external live providers are not authenticated/connected
-  systemMode: APPLICATION_MODES.DEMO,
-  effectiveMode: APPLICATION_MODES.DEMO,
+  // Default is LIVE, connecting directly to authoritative Python FastAPI backend
+  systemMode: APPLICATION_MODES.LIVE,
+  effectiveMode: APPLICATION_MODES.LIVE,
   syncStatus: 'STANDBY', // 'STANDBY' | 'SYNCING' | 'CONNECTED' | 'FALLBACK_DEMO'
   syncErrorNote: null,
   loading: false,

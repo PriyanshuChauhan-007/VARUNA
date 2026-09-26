@@ -49,14 +49,10 @@ function formatChartTime(isoString, leadHours) {
   if (!isoString) return `+${leadHours}h`;
   try {
     const d = new Date(isoString);
-    if (leadHours > 48) {
-      const month = d.getUTCMonth() + 1;
-      const day = d.getUTCDate();
-      const hour = String(d.getUTCHours()).padStart(2, '0');
-      return `${day}/${month} ${hour}:00`;
-    }
+    const month = d.getUTCMonth() + 1;
+    const day = d.getUTCDate();
     const hour = String(d.getUTCHours()).padStart(2, '0');
-    return `${hour}:00`;
+    return `${day}/${month} ${hour}:00`;
   } catch {
     return `+${leadHours}h`;
   }

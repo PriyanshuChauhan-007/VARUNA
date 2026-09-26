@@ -200,7 +200,7 @@ class OpenMeteoProvider(AbstractWeatherProvider):
             hourly = raw_data.get("hourly", {})
             times = hourly.get("time", [])
             
-            init_time = datetime.now(timezone.utc)
+            init_time = datetime.fromisoformat(times[0]).replace(tzinfo=timezone.utc) if times else datetime.now(timezone.utc)
             points: List[NormalizedForecastPoint] = []
             
             # Map Open-Meteo column keys
