@@ -77,14 +77,20 @@ class VarunaMetaModel:
             df = df.copy()
             df["lead_time_hours"] = 48
 
-        df_sorted = df.sort_values(["timestamp", "lead_time_hours"]).reset_index(drop=True)
-        n = len(df_sorted)
-        train_end = int(n * train_ratio)
-        val_end = int(n * (train_ratio + val_ratio))
+        # 1. Obtain sorted unique valid timestamps
+        unique_times = sorted(df["timestamp"].unique())
+        n_times = len(unique_times)
+        train_t_end = int(n_times * train_ratio)
+        val_t_end = int(n_times * (train_ratio + val_ratio))
         
-        train_df = df_sorted.iloc[:train_end]
-        val_df = df_sorted.iloc[train_end:val_end]
-        test_df = df_sorted.iloc[val_end:]
+        train_times = set(unique_times[:train_t_end])
+        val_times = set(unique_times[train_t_end:val_t_end])
+        test_times = set(unique_times[val_t_end:])
+        
+        # 2. Assign ALL rows belonging to each timestamp to the same partition (zero timestamp overlap)
+        train_df = df[df["timestamp"].isin(train_times)].sort_values(["timestamp", "lead_time_hours"]).reset_index(drop=True)
+        val_df = df[df["timestamp"].isin(val_times)].sort_values(["timestamp", "lead_time_hours"]).reset_index(drop=True)
+        test_df = df[df["timestamp"].isin(test_times)].sort_values(["timestamp", "lead_time_hours"]).reset_index(drop=True)
 
         eval_summary = {}
         feature_cols = [

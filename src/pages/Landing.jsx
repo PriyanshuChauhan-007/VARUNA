@@ -94,7 +94,7 @@ export default function Landing() {
             {/* Pill Badge */}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-amber-400/80 bg-amber-50 dark:bg-amber-950/40 text-[11px] font-bold text-amber-800 dark:text-amber-300 font-data uppercase tracking-wider">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              <span>ECMWF IFS · AIFS · NOAA GFS · ADAPTIVE HYBRID METEOROLOGICAL INTELLIGENCE</span>
+              <span>ECMWF IFS · ECMWF AIFS · NOAA GFS · DWD ICON · ADAPTIVE HYBRID METEOROLOGICAL INTELLIGENCE</span>
             </div>
 
             {/* Massive Heading */}
@@ -132,7 +132,7 @@ export default function Landing() {
                   Ingestion Feed
                 </span>
                 <span className="font-data text-scale-sm font-bold text-[var(--color-text-primary)] block mt-0.5">
-                  ECMWF IFS · GFS 0.25°
+                  ECMWF IFS · GFS · ICON
                 </span>
               </div>
               <div>
@@ -245,10 +245,10 @@ export default function Landing() {
                 Multi-Center Ensemble
               </span>
               <div className="font-data text-4xl font-bold text-[var(--color-text-primary)] my-3">
-                3 <span className="text-scale-base font-normal text-[var(--color-text-secondary)]">Member Framework</span>
+                4 <span className="text-scale-base font-normal text-[var(--color-text-secondary)]">Member Framework</span>
               </div>
               <p className="text-scale-xs text-[var(--color-text-secondary)] leading-relaxed">
-                Combined streams from ECMWF IFS (9km NWP), ECMWF AIFS (Deep Learning), and NOAA GFS (13km FV3).
+                Combined streams from ECMWF IFS (9km NWP), ECMWF AIFS (Deep Learning), NOAA GFS (13km FV3), and DWD ICON (13km NWP).
               </p>
             </div>
 

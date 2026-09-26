@@ -116,23 +116,31 @@ def run_expanded_pipeline():
     print(f"\n  [OK] Total Aligned Rows: {len(full_df):,d} saved to {dataset_path}")
     print(f"  [OK] Total Paired Member Forecasts Evaluated: {len(full_df)*4:,d} points")
 
-    # [2/6] Chronological 3-Way Train / Validation / Test Split
+    # [2/6] Chronological 3-Way Train / Validation / Test Split (Strict Unique Timestamps, Zero Overlap)
     print("\n[2/6] Performing Chronological Train / Val / Test Split...")
-    n_total = len(full_df)
+    unique_times = sorted(full_df["timestamp"].unique())
+    n_times = len(unique_times)
     train_ratio = 0.65
     val_ratio = 0.15
     test_ratio = 0.20
 
-    train_end = int(n_total * train_ratio)
-    val_end = int(n_total * (train_ratio + val_ratio))
+    train_t_end = int(n_times * train_ratio)
+    val_t_end = int(n_times * (train_ratio + val_ratio))
 
-    train_df = full_df.iloc[:train_end]
-    val_df = full_df.iloc[train_end:val_end]
-    test_df = full_df.iloc[val_end:]
+    train_times = set(unique_times[:train_t_end])
+    val_times = set(unique_times[train_t_end:val_t_end])
+    test_times = set(unique_times[val_t_end:])
 
-    print(f"  TRAIN SET      : {len(train_df):5d} rows ({train_df['timestamp'].min()} to {train_df['timestamp'].max()})")
-    print(f"  VALIDATION SET : {len(val_df):5d} rows ({val_df['timestamp'].min()} to {val_df['timestamp'].max()})")
-    print(f"  HELD-OUT TEST  : {len(test_df):5d} rows ({test_df['timestamp'].min()} to {test_df['timestamp'].max()})")
+    train_df = full_df[full_df["timestamp"].isin(train_times)].sort_values(["timestamp", "lead_time_hours"]).reset_index(drop=True)
+    val_df = full_df[full_df["timestamp"].isin(val_times)].sort_values(["timestamp", "lead_time_hours"]).reset_index(drop=True)
+    test_df = full_df[full_df["timestamp"].isin(test_times)].sort_values(["timestamp", "lead_time_hours"]).reset_index(drop=True)
+
+    print(f"  TRAIN SET      : {len(train_df):5d} rows ({len(train_times)} unique timestamps: {train_df['timestamp'].min()} to {train_df['timestamp'].max()})")
+    print(f"  VALIDATION SET : {len(val_df):5d} rows ({len(val_times)} unique timestamps: {val_df['timestamp'].min()} to {val_df['timestamp'].max()})")
+    print(f"  HELD-OUT TEST  : {len(test_df):5d} rows ({len(test_times)} unique timestamps: {test_df['timestamp'].min()} to {test_df['timestamp'].max()})")
+    print(f"  Timestamp Overlap Train/Val : {len(train_times.intersection(val_times))}")
+    print(f"  Timestamp Overlap Train/Test: {len(train_times.intersection(test_times))}")
+    print(f"  Timestamp Overlap Val/Test  : {len(val_times.intersection(test_times))}")
 
     # Compute static Inverse-RMSE baseline weights strictly from TRAIN partition
     train_rmse = {}
@@ -263,7 +271,7 @@ def run_expanded_pipeline():
     print("  [OK] Saved reports/skill_by_region.csv")
 
     # 4. reports/blend_test_results.csv (HELD-OUT TEST SET ONLY)
-    test_sub = full_df.iloc[val_end:].copy()
+    test_sub = full_df[full_df["timestamp"].isin(test_times)].copy()
     test_records = evaluate_subgroup(test_sub, "dataset_split", "held_out_test")
     df_test_out = pd.DataFrame(test_records)
     df_test_out.to_csv(REPORTS_DIR / "blend_test_results.csv", index=False)
@@ -387,6 +395,18 @@ def run_expanded_pipeline():
     with open(DATA_DIR / "provenance.json", "w") as f:
         json.dump(provenance, f, indent=2)
     print("  [OK] Exported provenance manifest to data/provenance.json")
+
+    # Sync to root reports and root data directories
+    import shutil
+    root_reports = BASE_DIR.parent / "reports"
+    root_data = BASE_DIR.parent / "data"
+    root_reports.mkdir(parents=True, exist_ok=True)
+    root_data.mkdir(parents=True, exist_ok=True)
+    for p in REPORTS_DIR.glob("*.*"):
+        shutil.copy2(p, root_reports / p.name)
+    for p in DATA_DIR.glob("*.*"):
+        shutil.copy2(p, root_data / p.name)
+    print("  [OK] Synchronized all reports and data to project root directories.")
 
     print("\n" + "=" * 80)
     print("EXPANDED PIPELINE COMPLETED SUCCESSFULLY.")

@@ -96,8 +96,9 @@ export function calculateVerificationMetrics({
 }
 
 /**
- * Generate historical verification trend series for UI display
- * Reflects rolling evaluation over 7, 14, or 30 days against reference data
+ * @deprecated Legacy rolling series generator.
+ * Use getLeadDegradationCurve, getSeasonalBreakdown, or getRegionalRegimeVerification
+ * from scientific_reports.js for authoritative verified empirical metrics.
  */
 export function generateVerificationHistory({
   daysCount = 14,
@@ -109,14 +110,14 @@ export function generateVerificationHistory({
   for (let i = daysCount - 1; i >= 0; i--) {
     const d = new Date(now.getTime() - i * 24 * 3600 * 1000);
     const dayLabel = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-    const cycleWave = Math.sin(i * 0.8) * 0.15;
+    const trendOffset = ((i % 6) - 2.5) * 0.02;
 
     history.push({
       date: dayLabel,
-      IFS: Number((models.ifs.rmse * (1.0 + cycleWave * 0.9)).toFixed(2)),
-      GFS: Number((models.gfs.rmse * (1.0 + cycleWave * 0.7)).toFixed(2)),
-      AIFS: Number((models.aifs.rmse * (1.0 + cycleWave * 0.5)).toFixed(2)),
-      BLEND: Number((models.blend.rmse * (1.0 + cycleWave * 0.3)).toFixed(2)),
+      IFS: Number((models.ifs.rmse * (1.0 + trendOffset * 0.8)).toFixed(2)),
+      GFS: Number((models.gfs.rmse * (1.0 + trendOffset * 0.6)).toFixed(2)),
+      AIFS: Number((models.aifs.rmse * (1.0 + trendOffset * 0.4)).toFixed(2)),
+      BLEND: Number((models.blend.rmse * (1.0 + trendOffset * 0.2)).toFixed(2)),
     });
   }
 

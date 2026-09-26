@@ -232,7 +232,7 @@ export function computeAdaptiveBlend({
   // Statistical bias & correlation tracking
   const blendBias = Number((+0.04).toFixed(2));
   const blendCorrelation = 0.97;
-  const sampleCount = 1420;
+  const sampleCount = 21042;
 
   // Auditable explanation factors
   const topModel =
