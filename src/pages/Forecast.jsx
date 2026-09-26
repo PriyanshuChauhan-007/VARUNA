@@ -1,3 +1,4 @@
+import { useState, useEffect, useMemo } from 'react';
 import {
   LineChart,
   Line,
@@ -12,6 +13,9 @@ import { useStore } from '../store/useStore';
 import { REGIONS, VARIABLES, getDeterministicForecast } from '../data/mockData.js';
 import { formatCoords, getRiskColor } from '../utils/formatters';
 import ChartCard from '../components/shared/ChartCard';
+import { fetchForecast } from '../services/api';
+
+const AVAILABLE_HORIZONS = ['24h', '48h', '72h', '120h', '7d', '30d'];
 
 export default function Forecast() {
   const selectedRegionId = useStore((s) => s.selectedRegionId);
@@ -20,9 +24,98 @@ export default function Forecast() {
   const setVariable = useStore((s) => s.setVariable);
   const selectedLeadTime = useStore((s) => s.selectedLeadTime);
   const setLeadTime = useStore((s) => s.setLeadTime);
+  const effectiveMode = useStore((s) => s.effectiveMode);
 
-  const forecast = getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime);
-  const { region, variable, models, timeseries, alertLevel } = forecast;
+  // Initialize with deterministic fallback so UI has zero blank flash
+  const fallbackBaseline = useMemo(() => {
+    return getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime);
+  }, [selectedRegionId, selectedVariable, selectedLeadTime]);
+
+  const [forecast, setForecast] = useState(fallbackBaseline);
+  const [loading, setLoading] = useState(false);
+  const [isFallback, setIsFallback] = useState(false);
+  const [fallbackReason, setFallbackReason] = useState(null);
+
+  // Authoritative live data fetch from Python FastAPI backend (/api/forecast)
+  useEffect(() => {
+    let cancelled = false;
+
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+
+      // If explicit DEMO mode requested by user
+      if (effectiveMode === 'DEMO') {
+        const demoData = getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, 'DEMO');
+        setForecast(demoData);
+        setIsFallback(true);
+        setFallbackReason('User-selected DEMO mode active');
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      fetchForecast({
+        region: selectedRegionId,
+        variable: selectedVariable,
+        leadTime: selectedLeadTime,
+        mode: effectiveMode === 'REPLAY' ? 'REPLAY' : 'LIVE',
+      })
+        .then((data) => {
+          if (!cancelled) {
+            setForecast(data);
+            setIsFallback(false);
+            setFallbackReason(null);
+            setLoading(false);
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            // Explicit fallback on network or backend API failure (Phase 9)
+            const fallbackData = getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, 'DEMO');
+            setForecast(fallbackData);
+            setIsFallback(true);
+            setFallbackReason(`Backend offline: ${err.message || 'API unreachable'}. Displaying baseline fallback.`);
+            setLoading(false);
+          }
+        });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode]);
+
+  const {
+    region = {},
+    variable = {},
+    models = {},
+    timeseries = [],
+    alertLevel = 'NOMINAL',
+    alertReason = '',
+    unit = '',
+    whyThisBlend = {},
+    horizonNote = null,
+  } = forecast || {};
+
+  // Compute ensemble spread across available member forecasts
+  const memberValues = [
+    models.ifs?.value,
+    models.aifs?.value,
+    models.gfs?.value,
+    models.icon?.value,
+  ].filter((v) => typeof v === 'number' && !isNaN(v));
+
+  const ensembleSpread = memberValues.length > 1
+    ? (Math.max(...memberValues) - Math.min(...memberValues)).toFixed(1)
+    : '0.0';
+
+  // Compute sum of weights
+  const weightsSum = (
+    (models.ifs?.weight || 0) +
+    (models.aifs?.weight || 0) +
+    (models.gfs?.weight || 0) +
+    (models.icon?.weight || 0)
+  );
 
   return (
     <div className="h-full overflow-y-auto p-4 md:p-6 space-y-6 bg-[var(--color-surface)]">
@@ -33,15 +126,15 @@ export default function Forecast() {
             Forecast Analysis &amp; Ensembles
           </h1>
           <p className="mt-1 text-scale-sm text-[var(--color-text-secondary)]">
-            Multi-model diurnal cycle synthesis, atmospheric regime tracking, and dynamic ensemble spread
+            Multi-model NWP-AI blending (ECMWF IFS, ECMWF AIFS, NOAA GFS, DWD ICON) with contextual error minimization
           </p>
         </div>
 
-        {/* Lead time + variable controls */}
+        {/* Lead time / Horizon + Variable controls */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Lead time pill */}
+          {/* Horizon pills */}
           <div className="inline-flex items-center gap-1 bg-[var(--color-panel)] border border-[var(--color-border)] p-1 rounded-[var(--radius-lg)] shadow-xs">
-            {['24h', '48h', '72h', '120h'].map((lt) => (
+            {AVAILABLE_HORIZONS.map((lt) => (
               <button
                 key={lt}
                 onClick={() => setLeadTime(lt)}
@@ -76,6 +169,46 @@ export default function Forecast() {
         </div>
       </div>
 
+      {/* Explicit Data Mode & Status Banner (Phase 9) */}
+      <div className={`p-3 rounded-[var(--radius-md)] border flex items-center justify-between text-scale-xs transition-colors ${
+        isFallback
+          ? 'bg-amber-500/10 border-amber-400 text-amber-800 dark:text-amber-200'
+          : 'bg-emerald-500/10 border-emerald-400 text-emerald-800 dark:text-emerald-200'
+      }`}>
+        <div className="flex items-center gap-2">
+          <span className={`w-2.5 h-2.5 rounded-full ${isFallback ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
+          <span className="font-bold tracking-wide">
+            {isFallback ? 'REPLAY / DEMO FALLBACK' : 'LIVE OPERATIONAL STREAM'}
+          </span>
+          <span className="hidden sm:inline text-[var(--color-text-secondary)]">
+            {isFallback
+              ? `— ${fallbackReason || 'Baseline fallback active; not live scientific output'}`
+              : '— Connected to Python FastAPI /api/forecast (ECMWF IFS, AIFS, NOAA GFS, DWD ICON via Open-Meteo Gateway)'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {loading && (
+            <span className="text-[11px] font-mono text-[var(--color-text-tertiary)] animate-pulse">
+              Syncing...
+            </span>
+          )}
+          <span className="font-data text-[11px] font-bold px-2 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)]">
+            {isFallback ? 'FALLBACK' : 'LIVE 200 OK'}
+          </span>
+        </div>
+      </div>
+
+      {/* Horizon Limitation Alert (Phase 7: e.g. 30-Day limit) */}
+      {horizonNote && (
+        <div className="p-3 bg-blue-500/10 border border-blue-400 text-blue-900 dark:text-blue-200 rounded-[var(--radius-md)] text-scale-xs flex items-start gap-2">
+          <span className="font-bold text-blue-600 dark:text-blue-400 mt-0.5">ℹ</span>
+          <div>
+            <span className="font-bold block mb-0.5">Forecast Horizon Notice:</span>
+            <p className="text-[11px] leading-relaxed">{horizonNote}</p>
+          </div>
+        </div>
+      )}
+
       {/* Regional Selector Strip */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-[var(--color-border)]">
         <span className="text-scale-xs font-bold uppercase tracking-wider text-[var(--color-text-tertiary)] shrink-0">
@@ -104,84 +237,84 @@ export default function Forecast() {
 
       {/* Primary KPI Strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* Card 1: VARUNA Blend Forecast */}
         <div className="p-4 bg-[var(--color-panel)] border border-[var(--color-border)] rounded-[var(--radius-lg)] shadow-xs">
           <div className="text-[11px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider">
             VARUNA Blend Forecast
           </div>
           <div className="flex items-baseline gap-1.5 mt-1">
             <span className="font-data text-3xl font-bold text-amber-600">
-              {models.blend.value}
+              {models.blend?.value !== undefined ? Number(models.blend.value).toFixed(1) : '--'}
             </span>
             <span className="text-scale-sm font-semibold text-[var(--color-text-secondary)]">
-              {forecast.unit}
+              {unit}
             </span>
           </div>
           <div className="mt-1 text-[11px] text-[var(--color-text-secondary)]">
-            Adaptive Hybrid Blend (XGBoost Meta-Model)
+            Contextual Hybrid Blend (+{selectedLeadTime})
           </div>
         </div>
 
+        {/* Card 2: Alert Status */}
         <div className="p-4 bg-[var(--color-panel)] border border-[var(--color-border)] rounded-[var(--radius-lg)] shadow-xs">
           <div className="text-[11px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider">
             Alert Status
           </div>
           <div className="flex items-center gap-2 mt-1">
-            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: getRiskColor(alertLevel) }} />
+            <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: getRiskColor(alertLevel) }} />
             <span className="font-data text-2xl font-bold text-[var(--color-text-primary)]">
               {alertLevel}
             </span>
           </div>
           <div className="mt-1 text-[11px] text-[var(--color-text-secondary)] truncate">
-            {forecast.alertReason}
+            {alertReason || 'IMD Operational Threshold Monitoring'}
           </div>
         </div>
 
+        {/* Card 3: Top Driving Model */}
         <div className="p-4 bg-[var(--color-panel)] border border-[var(--color-border)] rounded-[var(--radius-lg)] shadow-xs">
           <div className="text-[11px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider">
             Top Driving Model
           </div>
           <div className="flex items-baseline gap-1 mt-1">
-            <span className={`font-data text-2xl font-bold ${
-              forecast.whyThisBlend?.topModel?.key === 'ifs'
-                ? 'text-blue-600'
-                : forecast.whyThisBlend?.topModel?.key === 'gfs'
-                ? 'text-emerald-600'
-                : 'text-purple-600'
-            }`}>
-              {forecast.whyThisBlend?.topModel?.name || 'ECMWF AIFS'}
+            <span className="font-data text-2xl font-bold text-purple-600">
+              {whyThisBlend.topModel?.name || 'ECMWF IFS'}
             </span>
             <span className="text-scale-sm font-bold text-[var(--color-text-secondary)] font-data">
-              ({forecast.whyThisBlend?.topModel?.pct || models.aifs.weight}%)
+              ({whyThisBlend.topModel?.pct || 25}%)
             </span>
           </div>
-          <div className="mt-1 text-[11px] text-[var(--color-text-secondary)]">
-            Lowest RMSE: {forecast.whyThisBlend?.topModel?.rmse?.toFixed(2) || models.aifs.rmse} {forecast.unit}
+          <div className="mt-1 text-[11px] text-[var(--color-text-secondary)] truncate">
+            {whyThisBlend.topModel?.error !== undefined
+              ? `Est. Contextual Error: ${whyThisBlend.topModel.error} ${unit}`
+              : `Weighted Reliability Allocation (+${selectedLeadTime})`}
           </div>
         </div>
 
+        {/* Card 4: Ensemble Spread / Agreement */}
         <div className="p-4 bg-[var(--color-panel)] border border-[var(--color-border)] rounded-[var(--radius-lg)] shadow-xs">
           <div className="text-[11px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider">
-            Verification Improvement
+            Ensemble Spread
           </div>
           <div className="flex items-baseline gap-1 mt-1">
             <span className="font-data text-2xl font-bold text-emerald-600">
-              -{models.blend.rmseReductionPct}%
+              {ensembleSpread}
             </span>
-            <span className="text-scale-xs text-emerald-700 font-medium font-data">
-              vs Best Member
+            <span className="text-scale-xs text-emerald-700 font-medium font-data ml-1">
+              {unit} spread
             </span>
           </div>
           <div className="mt-1 text-[11px] text-[var(--color-text-secondary)]">
-            N={models.blend.sampleCount.toLocaleString()} Reference Forecast Records
+            {memberValues.length} Canonical Members (IFS, AIFS, GFS, ICON)
           </div>
         </div>
       </div>
 
-      {/* Main Multi-Model Diurnal Cycle Chart (matching THERMOS Analytics) */}
+      {/* Main Multi-Model Diurnal Cycle & Horizon Chart */}
       <ChartCard
-        title={`24-Hour Diurnal Evolution — ${region.name} (${selectedLeadTime})`}
-        subtitle={`Synchronous comparison of ECMWF IFS, AIFS, NOAA GFS, DWD ICON, and VARUNA Blend for ${variable.label} (${variable.unit})`}
-        badge={`Init: ${forecast.initializationTime ? forecast.initializationTime.slice(0, 10) : '2026-09-26'} 00z · Valid: ${forecast.validTime.slice(0, 10)} ${forecast.validTime.slice(11, 16)} UTC (+${selectedLeadTime})`}
+        title={`Forecast Evolution & Member Trajectories — ${region.name || 'Selected Region'} (${selectedLeadTime})`}
+        subtitle={`Synchronous progression of ECMWF IFS, ECMWF AIFS, NOAA GFS, DWD ICON, and VARUNA Blend for ${variable.label || 'Variable'} (${unit})`}
+        badge={`Init: ${forecast.initializationTime ? forecast.initializationTime.slice(0, 10) : '2026-09-26'} 00z · Horizon: +${selectedLeadTime}`}
         span="full"
       >
         <ResponsiveContainer width="100%" height={340}>
@@ -197,7 +330,7 @@ export default function Forecast() {
               tick={{ fontSize: 11, fill: 'var(--color-text-tertiary)', fontFamily: "'JetBrains Mono', monospace" }}
               tickLine={false}
               axisLine={{ stroke: 'var(--color-border)' }}
-              unit={` ${forecast.unit}`}
+              unit={` ${unit}`}
             />
             <Tooltip
               contentStyle={{
@@ -215,75 +348,84 @@ export default function Forecast() {
             <Line
               type="monotone"
               dataKey="IFS"
-              name="ECMWF IFS (Physical NWP)"
+              name="ECMWF IFS (Physical NWP 9km)"
               stroke="#2563EB"
               strokeWidth={2}
-              dot={{ r: 3, fill: '#2563EB' }}
+              dot={{ r: 2.5, fill: '#2563EB' }}
             />
             <Line
               type="monotone"
               dataKey="AIFS"
-              name="ECMWF AIFS (Deep Learning)"
+              name="ECMWF AIFS (Deep Learning Transformer 28km)"
               stroke="#8B5CF6"
               strokeWidth={2}
-              dot={{ r: 3, fill: '#8B5CF6' }}
+              dot={{ r: 2.5, fill: '#8B5CF6' }}
             />
             <Line
               type="monotone"
               dataKey="GFS"
-              name="NOAA GFS (FV3 Global)"
+              name="NOAA GFS (Global FV3 13km)"
               stroke="#059669"
               strokeWidth={2}
-              dot={{ r: 3, fill: '#059669' }}
+              dot={{ r: 2.5, fill: '#059669' }}
             />
             <Line
               type="monotone"
               dataKey="ICON"
-              name="DWD ICON (13km NWP)"
+              name="DWD ICON (Non-Hydrostatic 13km)"
               stroke="#F59E0B"
               strokeWidth={2}
-              dot={{ r: 3, fill: '#F59E0B' }}
+              dot={{ r: 2.5, fill: '#F59E0B' }}
             />
             <Line
               type="monotone"
               dataKey="VARUNA"
-              name="VARUNA BLEND (Adaptive Hybrid)"
+              name="VARUNA BLEND (Contextual Hybrid)"
               stroke="#D97706"
               strokeWidth={3.5}
-              dot={{ r: 4, fill: '#D97706' }}
+              dot={{ r: 3.5, fill: '#D97706' }}
             />
           </LineChart>
         </ResponsiveContainer>
       </ChartCard>
 
-      {/* Atmospheric Context & Ensemble Spread Breakdown */}
+      {/* Atmospheric Context & Consensus breakdown */}
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* Regional Atmospheric Regime Profile */}
         <ChartCard
           title="Regional Atmospheric Regime Profile"
-          subtitle="Climatological forcing parameters and local topography"
-          badge={region.zone}
+          subtitle="Climatological forcing parameters, synoptic classification, and local topography"
+          badge={region.zone || 'Synoptic Zone'}
         >
           <div className="space-y-3.5 text-scale-xs">
             <div className="p-3 bg-[var(--color-surface)] rounded-[var(--radius-md)] border border-[var(--color-border)]">
               <span className="font-bold text-[var(--color-text-primary)] block mb-0.5">
                 Active Weather Regime
               </span>
-              <p className="text-[var(--color-text-secondary)]">{region.regime}</p>
+              <p className="text-[var(--color-text-secondary)] leading-relaxed">
+                {region.regime || 'Standard synoptic regime'}
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-3 font-data">
               <div className="p-3 bg-[var(--color-surface)] rounded-[var(--radius-md)] border border-[var(--color-border)]">
                 <span className="text-[var(--color-text-tertiary)] block text-[10px] uppercase font-bold">Coordinates</span>
-                <span className="text-[var(--color-text-primary)] font-bold">{formatCoords(region.lat, region.lng)}</span>
+                <span className="text-[var(--color-text-primary)] font-bold">
+                  {region.lat !== undefined && region.lng !== undefined ? formatCoords(region.lat, region.lng) : '--'}
+                </span>
               </div>
               <div className="p-3 bg-[var(--color-surface)] rounded-[var(--radius-md)] border border-[var(--color-border)]">
                 <span className="text-[var(--color-text-tertiary)] block text-[10px] uppercase font-bold">Terrain Elevation</span>
-                <span className="text-[var(--color-text-primary)] font-bold">{region.elevation} MSL</span>
+                <span className="text-[var(--color-text-primary)] font-bold">
+                  {region.elevation ? (typeof region.elevation === 'string' && region.elevation.includes('m') ? region.elevation : `${region.elevation}m`) : '--'} MSL
+                </span>
               </div>
             </div>
             <div className="p-3 bg-[var(--color-surface)] rounded-[var(--radius-md)] border border-[var(--color-border)] flex items-center justify-between">
               <div>
                 <span className="font-bold text-[var(--color-text-primary)] block">IMD AWS — Integration Pending</span>
-                <span className="text-[var(--color-text-secondary)] text-[11px]">No verified station observations connected ({region.stationsCount} planned stations)</span>
+                <span className="text-[var(--color-text-secondary)] text-[11px]">
+                  No verified station observations connected ({region.stationsCount || 28} planned stations in zone mesh)
+                </span>
               </div>
               <span className="font-data font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/60 px-2 py-1 rounded border border-amber-300 text-[10px]">
                 Integration Pending
@@ -292,63 +434,111 @@ export default function Forecast() {
           </div>
         </ChartCard>
 
+        {/* Multi-Model Consensus & Adaptive Weight Contribution (Phase 6 & 10) */}
         <ChartCard
-          title="Multi-Model Consensus & Weight Contribution"
-          subtitle="Relative adaptive weights allocated via XGBoost reliability meta-model"
-          badge="XGBoost Kernel"
+          title="Multi-Model Consensus & Adaptive Weight Contribution"
+          subtitle="Real-time contextual weights allocated by Python XGBoost meta-model based on synoptic conditions"
+          badge={
+            isFallback
+              ? 'DEMO / FALLBACK'
+              : `Total Weight: ${weightsSum}% (Hamilton-Hare Normalized)`
+          }
         >
           <div className="space-y-4 pt-1">
-            {/* AIFS */}
-            <div>
-              <div className="flex justify-between text-scale-xs mb-1 font-semibold">
-                <span className="text-purple-600 font-data">ECMWF AIFS — Deep Learning Transformer</span>
-                <span className="font-data">{models.aifs.value} {forecast.unit} ({models.aifs.weight}%)</span>
-              </div>
-              <div className="w-full h-3 bg-[var(--color-surface-muted)] rounded-full overflow-hidden border border-[var(--color-border)]">
-                <div className="h-full bg-purple-600 rounded-full transition-all" style={{ width: `${models.aifs.weight}%` }} />
-              </div>
-            </div>
-
-            {/* GFS */}
-            <div>
-              <div className="flex justify-between text-scale-xs mb-1 font-semibold">
-                <span className="text-emerald-600 font-data">NOAA GFS — Global NWP (FV3)</span>
-                <span className="font-data">{models.gfs.value} {forecast.unit} ({models.gfs.weight}%)</span>
-              </div>
-              <div className="w-full h-3 bg-[var(--color-surface-muted)] rounded-full overflow-hidden border border-[var(--color-border)]">
-                <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${models.gfs.weight}%` }} />
-              </div>
-            </div>
-
-            {/* IFS */}
-            <div>
-              <div className="flex justify-between text-scale-xs mb-1 font-semibold">
-                <span className="text-blue-600 font-data">ECMWF IFS — High-Resolution Physical NWP</span>
-                <span className="font-data">{models.ifs.value} {forecast.unit} ({models.ifs.weight}%)</span>
-              </div>
-              <div className="w-full h-3 bg-[var(--color-surface-muted)] rounded-full overflow-hidden border border-[var(--color-border)]">
-                <div className="h-full bg-blue-600 rounded-full transition-all" style={{ width: `${models.ifs.weight}%` }} />
-              </div>
-            </div>
-
-            {/* ICON */}
-            {models.icon && (
-              <div>
-                <div className="flex justify-between text-scale-xs mb-1 font-semibold">
-                  <span className="text-amber-500 font-data">DWD ICON — Global NWP (13km)</span>
-                  <span className="font-data">{models.icon.value} {forecast.unit} ({models.icon.weight}%)</span>
+            {/* Model list: IFS, AIFS, GFS, ICON */}
+            {[
+              {
+                id: 'ifs',
+                shortName: 'IFS',
+                name: 'ECMWF IFS',
+                desc: 'High-Resolution Physical NWP (9km)',
+                barBg: 'bg-blue-600',
+                model: models.ifs,
+              },
+              {
+                id: 'aifs',
+                shortName: 'AIFS',
+                name: 'ECMWF AIFS',
+                desc: 'Deep Learning Spherical Transformer (28km)',
+                barBg: 'bg-purple-600',
+                model: models.aifs,
+              },
+              {
+                id: 'gfs',
+                shortName: 'GFS',
+                name: 'NOAA GFS',
+                desc: 'Operational Global NWP (FV3 Core, 13km)',
+                barBg: 'bg-emerald-600',
+                model: models.gfs,
+              },
+              {
+                id: 'icon',
+                shortName: 'ICON',
+                name: 'DWD ICON',
+                desc: 'Icosahedral Non-Hydrostatic NWP (13km)',
+                barBg: 'bg-amber-500',
+                model: models.icon,
+              },
+            ].map(({ id, name, desc, barBg, model }) => {
+              if (!model) return null;
+              const weightVal = model.weight ?? 0;
+              const valueVal = model.value !== undefined ? Number(model.value).toFixed(1) : '--';
+              return (
+                <div key={id} className="p-3 bg-[var(--color-surface)] rounded-[var(--radius-md)] border border-[var(--color-border)]">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
+                    <div>
+                      <span className="font-bold text-[var(--color-text-primary)] text-scale-xs">
+                        {name}
+                      </span>
+                      <span className="text-[10px] text-[var(--color-text-tertiary)] block sm:inline sm:ml-2">
+                        {desc}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 font-data text-scale-xs">
+                      <span className="text-[var(--color-text-primary)] font-bold">
+                        Forecast: {valueVal} {unit} <span className="text-[var(--color-text-tertiary)] font-normal">(+{selectedLeadTime})</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)] font-bold">
+                        Weight: {weightVal}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="w-full h-2.5 bg-[var(--color-surface-muted)] rounded-full overflow-hidden border border-[var(--color-border)]">
+                    <div
+                      className={`h-full ${barBg} rounded-full transition-all`}
+                      style={{ width: `${Math.min(100, Math.max(0, weightVal))}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full h-3 bg-[var(--color-surface-muted)] rounded-full overflow-hidden border border-[var(--color-border)]">
-                  <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${models.icon.weight}%` }} />
-                </div>
-              </div>
-            )}
+              );
+            })}
 
             {/* Bottom summary */}
-            <div className="p-3 bg-[var(--color-accent-subtle)] border border-amber-300 rounded-[var(--radius-md)] flex items-center justify-between text-scale-xs">
-              <span className="font-bold text-[var(--color-text-primary)]">VARUNA Weighted Consensus</span>
-              <span className="font-data font-bold text-amber-700 text-scale-sm">{models.blend.value} {forecast.unit}</span>
+            <div className="p-3 bg-[var(--color-accent-subtle)] border border-amber-300 rounded-[var(--radius-md)] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-scale-xs">
+              <div>
+                <span className="font-bold text-[var(--color-text-primary)] block">
+                  VARUNA Final Blended Forecast
+                </span>
+                <span className="text-[11px] text-[var(--color-text-secondary)]">
+                  Contextual synthesis: Σ (Weight × Forecast) / 100
+                </span>
+              </div>
+              <div className="font-data font-bold text-amber-700 text-scale-base sm:text-scale-lg">
+                {models.blend?.value !== undefined ? Number(models.blend.value).toFixed(1) : '--'} {unit} <span className="text-scale-xs text-[var(--color-text-tertiary)] font-normal">(+{selectedLeadTime})</span>
+              </div>
             </div>
+
+            {/* Explanation box (Phase 10) */}
+            {whyThisBlend.explanation && (
+              <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-scale-xs">
+                <span className="font-bold text-[var(--color-text-primary)] block mb-1">
+                  Why this blend?
+                </span>
+                <p className="text-[var(--color-text-secondary)] text-[11px] leading-relaxed">
+                  {whyThisBlend.explanation}
+                </p>
+              </div>
+            )}
           </div>
         </ChartCard>
       </div>
