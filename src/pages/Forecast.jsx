@@ -274,8 +274,8 @@ export default function Forecast() {
             </div>
             <div className="p-3 bg-[var(--color-surface)] rounded-[var(--radius-md)] border border-[var(--color-border)] flex items-center justify-between">
               <div>
-                <span className="font-bold text-[var(--color-text-primary)] block">IMD Observational Network</span>
-                <span className="text-[var(--color-text-secondary)] text-[11px]">{region.stationsCount} Reference Stations · In-Situ Ingestion Pending</span>
+                <span className="font-bold text-[var(--color-text-primary)] block">IMD AWS — Integration Pending</span>
+                <span className="text-[var(--color-text-secondary)] text-[11px]">No verified station observations connected ({region.stationsCount} planned stations)</span>
               </div>
               <span className="font-data font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/60 px-2 py-1 rounded border border-amber-300 text-[10px]">
                 Integration Pending

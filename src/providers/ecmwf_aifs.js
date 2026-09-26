@@ -53,7 +53,7 @@ export async function fetchEcmwfAifsForecast({
         pressure: 'surface_pressure',
       };
       const apiVar = varMap[variable] || 'precipitation';
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&models=ecmwf_aifs025&hourly=${apiVar}&forecast_days=6`;
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&models=ecmwf_aifs025_single&hourly=${apiVar}&forecast_days=6`;
       
       const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
       if (res.ok) {

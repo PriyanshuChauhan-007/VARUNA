@@ -1,0 +1,8 @@
+dataset_split,model,rmse,mae,bias,correlation,sample_count
+held_out_test,ecmwf_ifs,1.0568,0.8012,-0.2445,0.9764,4209
+held_out_test,ecmwf_aifs,1.6003,1.2187,0.8312,0.9725,4209
+held_out_test,ncep_gfs,2.2585,1.6557,0.98,0.9341,4209
+held_out_test,dwd_icon,1.2835,1.005,0.4284,0.9669,4209
+held_out_test,equal_blend,1.1315,0.8666,0.4988,0.977,4209
+held_out_test,inv_rmse_blend,0.9894,0.777,0.2897,0.9814,4209
+held_out_test,varuna_blend,0.8649,0.6518,0.1058,0.9836,4209

@@ -75,9 +75,9 @@ export function getSystemFeedsCatalog(activeMode = APPLICATION_MODES.DEMO) {
       authRequired: false,
     },
     {
-      name: 'IMD Surface AWS Mesh',
-      type: 'Observational Ground Stations (In-Situ Telemetry)',
-      cycle: '15-min Telemetry Stream',
+      name: 'IMD AWS — Integration Pending (No verified station observations connected)',
+      type: 'In-Situ Station Observations (Pending Connection)',
+      cycle: '15-min Telemetry Stream (Pending)',
       latency: 'Not Configured',
       resolution: 'Point Sensor Mesh (~850 Stations)',
       status: 'Integration Pending',
