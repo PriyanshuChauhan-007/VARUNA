@@ -12,8 +12,8 @@ import { APPLICATION_MODES, PROVIDER_STATUS } from './types.js';
 
 export const IMD_PROVIDER = {
   id: 'imd_aws',
-  name: 'IMD AWS Network',
-  fullName: 'India Meteorological Department Surface AWS / ARG Mesh',
+  name: 'IMD AWS — Integration Pending (No verified station observations connected)',
+  fullName: 'India Meteorological Department Surface AWS / ARG Mesh — Integration Pending',
   type: 'In-Situ Surface Observational Network',
   nativeResolution: 'Point Sensor Mesh (~850 Stations Across India)',
   cycle: '15-min / Hourly Telemetry (When Connected)',
@@ -21,9 +21,9 @@ export const IMD_PROVIDER = {
   status: PROVIDER_STATUS.INTEGRATION_PENDING,
   requiresApiKey: true,
   apiKeyEnvVar: 'VITE_IMD_AWS_API_KEY',
-  directBrowserAccess: false, // IMD endpoints require backend proxy due to CORS & SSL certificate policies
+  directBrowserAccess: false,
   backendAccess: true,
-  currentStatusNote: 'Official IMD AWS API credentials not configured. Live station feed integration pending.',
+  currentStatusNote: 'IMD AWS — Integration Pending (No verified station observations connected).',
 };
 
 /**
@@ -90,7 +90,7 @@ export async function fetchImdObservation({
     variable,
     value: referenceValue != null ? referenceValue : null,
     unit: units[variable] || 'mm',
-    source: 'Reference Dataset (IMD AWS Ingestion Pending)',
+    source: 'IMD AWS — Integration Pending (No verified station observations connected)',
     status: 'INTEGRATION_PENDING',
     mode: APPLICATION_MODES.DEMO,
   };
