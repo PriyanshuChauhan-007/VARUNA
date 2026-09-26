@@ -1,0 +1,266 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  /* 8px Base Spacing Scale */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-6: 48px;
+  --space-8: 64px;
+
+  /* 1.25 Modular Type Scale (Base 16px) */
+  --text-scale-xs: 12px;
+  --text-scale-sm: 14px;
+  --text-scale-base: 16px;
+  --text-scale-md: 20px;
+  --text-scale-lg: 25px;
+  --text-scale-xl: 31px;
+  --text-scale-2xl: 39px;
+  --text-scale-3xl: 49px;
+
+  /* Line Heights */
+  --leading-heading: 1.15;
+  --leading-body: 1.55;
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-normal: 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-slow: 250ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Light Theme Palette (THERMOS Warm Technical Contrast) */
+  --color-surface: #FAFAF8;
+  --color-panel: #FFFFFF;
+  --color-surface-card: #FFFFFF;
+  --color-surface-muted: #F2F0EB;
+  --color-surface-hover: #ECEAE3;
+  --color-surface-elevated: #FFFFFF;
+
+  --color-accent: #F5C518;
+  --color-accent-subtle: #FEF9E7;
+  --color-accent-hover: #EAB308;
+  --color-status-live: #16A34A;
+
+  --color-border: #E8E5DE;
+  --color-border-subtle: #F0EDE6;
+  --color-border-strong: #D8D4CA;
+
+  --color-text-primary: #1A1A17;
+  --color-text-secondary: #484841;
+  --color-text-tertiary: #75756C;
+  --color-text-muted: #9C9C91;
+
+  /* Weather & Risk Semantic Colors */
+  --color-risk-critical: #DC2626;
+  --color-risk-high: #EA580C;
+  --color-risk-medium: #D97706;
+  --color-risk-moderate: #D97706;
+  --color-risk-low: #16A34A;
+
+  --color-model-ifs: #2563EB;
+  --color-model-aifs: #8B5CF6;
+  --color-model-gfs: #059669;
+  --color-model-blend: #D97706;
+
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}
+
+/* Dark Theme Overrides */
+[data-theme="dark"],
+.dark {
+  --color-surface: #0a0e17;
+  --color-panel: #111827;
+  --color-surface-card: #111827;
+  --color-surface-muted: #182234;
+  --color-surface-hover: #1f2b40;
+  --color-surface-elevated: #1e293b;
+
+  --color-accent: #F5C518;
+  --color-accent-subtle: rgba(245, 197, 24, 0.12);
+  --color-accent-hover: #FCD34D;
+  --color-status-live: #22C55E;
+
+  --color-border: #243044;
+  --color-border-subtle: #192333;
+  --color-border-strong: #33435c;
+
+  --color-text-primary: #F8FAFC;
+  --color-text-secondary: #CBD5E1;
+  --color-text-tertiary: #94A3B8;
+  --color-text-muted: #64748B;
+}
+
+/* Base reset and defaults */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-size: var(--text-scale-base);
+  line-height: var(--leading-body);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Modular Typography Utility Classes */
+.text-scale-xs { font-size: var(--text-scale-xs); line-height: 1.4; }
+.text-scale-sm { font-size: var(--text-scale-sm); line-height: 1.45; }
+.text-scale-base { font-size: var(--text-scale-base); line-height: var(--leading-body); }
+.text-scale-md { font-size: var(--text-scale-md); line-height: 1.3; }
+.text-scale-lg { font-size: var(--text-scale-lg); line-height: var(--leading-heading); letter-spacing: -0.02em; }
+.text-scale-xl { font-size: var(--text-scale-xl); line-height: var(--leading-heading); letter-spacing: -0.025em; }
+.text-scale-2xl { font-size: var(--text-scale-2xl); line-height: var(--leading-heading); letter-spacing: -0.03em; }
+.text-scale-3xl { font-size: var(--text-scale-3xl); line-height: var(--leading-heading); letter-spacing: -0.035em; }
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans);
+  line-height: var(--leading-heading);
+  letter-spacing: -0.02em;
+}
+
+/* Monospace & Tabular Data Elements */
+.font-data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.01em;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Technical grid background with + marks */
+.technical-grid {
+  background-size: 40px 40px;
+  background-image: 
+    radial-gradient(circle, var(--color-border-strong) 1px, transparent 1px);
+}
+
+.technical-cross-grid {
+  background-image: 
+    linear-gradient(to right, rgba(0,0,0,0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0,0,0,0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.dark .technical-cross-grid {
+  background-image: 
+    linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px);
+}
+
+/* Smooth Interactive Elements */
+a, button, input, select, textarea {
+  transition: all var(--transition-normal);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-tertiary);
+}
+
+/* MapLibre overrides */
+.maplibregl-popup-content {
+  background: var(--color-panel) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+  padding: 0 !important;
+  font-family: var(--font-sans) !important;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: var(--color-panel) !important;
+}
+
+.maplibregl-popup-close-button {
+  font-size: var(--text-scale-base);
+  padding: 4px 8px;
+  color: var(--color-text-secondary);
+}
+
+/* High-tech pulsing rings */
+@keyframes tp {
+  0% { transform: scale(1); opacity: 0.9; }
+  70% { transform: scale(4.2); opacity: 0; }
+  100% { transform: scale(4.2); opacity: 0; }
+}
+
+.pulse-ring {
+  position: relative;
+  display: inline-block;
+}
+.pulse-ring::before,
+.pulse-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-accent);
+  animation: tp 3s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+}
+.pulse-ring::after {
+  animation-delay: 1.5s;
+}
+
+/* Accessibility: Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .pulse-ring::before,
+  .pulse-ring::after {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+}
