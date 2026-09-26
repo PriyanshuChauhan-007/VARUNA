@@ -42,3 +42,10 @@ export {
   fetchReferenceData,
   buildVerificationPairs,
 } from './historical.js';
+export {
+  DEFAULT_SKILL_METHODOLOGY_VERSION,
+  evaluateHistoricalSkill,
+  evaluateWalkForwardSkill,
+  createSkillEvaluationTable,
+  summarizeSkillByLead,
+} from './skill_evaluation.js';

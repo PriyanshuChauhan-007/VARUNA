@@ -9,16 +9,20 @@ import {
   createChronologicalSplits,
   createEvaluationMetadata,
   createWalkForwardFolds,
+  createSkillEvaluationTable,
   deriveLeadTimeHours,
   buildVerificationPairs,
   fetchHistoricalForecast,
   fetchReferenceData,
   HISTORICAL_MODEL_IDS,
+  evaluateHistoricalSkill,
+  evaluateWalkForwardSkill,
   normalizeHistoricalForecastRecord,
   normalizeHistoricalForecastResponse,
   normalizeReferenceResponse,
   matchForecastObservations,
   sortForecastsChronologically,
+  summarizeSkillByLead,
   validateForecastRecord,
   validateEvaluationFold,
   validateLeadTime,
@@ -896,4 +900,239 @@ test('TEST 50: retains requested/resolved coordinate provenance in paired record
   assert.deepEqual(pair.forecast.resolved_location, { latitude: 28.64302, longitude: 77.22656 });
   assert.deepEqual(pair.reference.requested_location, pair.forecast.resolved_location);
   assert.deepEqual(pair.reference.resolved_location, pair.forecast.resolved_location);
+});
+
+function skillMatch({
+  id,
+  modelId = 'model-a',
+  modelVersion = 'v1',
+  variable = 'temperature',
+  leadTimeHours = 24,
+  initializationTime = '2026-09-20T00:00:00Z',
+  forecastValue = 12,
+  observationValue = 10,
+} = {}) {
+  const matchId = id || `${modelId}-${modelVersion}-${variable}-${leadTimeHours}-${initializationTime}`;
+  const validTime = new Date(Date.parse(initializationTime) + leadTimeHours * 3_600_000).toISOString();
+  return {
+    match_id: matchId,
+    forecast_id: `forecast-${matchId}`,
+    observation_id: `observation-${matchId}`,
+    forecast: {
+      forecast_id: `forecast-${matchId}`,
+      model_id: modelId,
+      model_version: modelVersion,
+      variable,
+      value: forecastValue,
+      unit: 'C',
+      initialization_time: initializationTime,
+      valid_time: validTime,
+      lead_time_hours: leadTimeHours,
+      location: { location_id: 'location-1', latitude: 28.6, longitude: 77.2 },
+      source: 'forecast fixture',
+      source_dataset: 'evaluation fixture',
+      run_id: `run-${matchId}`,
+      mode: 'ARCHIVE',
+    },
+    observation: {
+      observation_id: `observation-${matchId}`,
+      variable,
+      value: observationValue,
+      unit: 'C',
+      observation_time: validTime,
+      available_at: new Date(Date.parse(validTime) + 86_400_000).toISOString(),
+      location: { location_id: 'location-1', latitude: 28.6, longitude: 77.2 },
+      source_kind: 'STATION_OBSERVATION',
+      source: 'station fixture',
+      dataset_id: 'station-fixture',
+      dataset_version: null,
+      quality_status: 'ACCEPTED',
+    },
+    forecast_minus_observation: forecastValue - observationValue,
+  };
+}
+
+test('TEST 51: evaluates metrics through calculateSkill for three matches', () => {
+  const matches = [
+    skillMatch({ id: 'skill-1', forecastValue: 11, observationValue: 10 }),
+    skillMatch({ id: 'skill-2', initializationTime: '2026-09-21T00:00:00Z', forecastValue: 13, observationValue: 11 }),
+    skillMatch({ id: 'skill-3', initializationTime: '2026-09-22T00:00:00Z', forecastValue: 15, observationValue: 13 }),
+  ];
+  const evaluation = evaluateHistoricalSkill(matches)[0];
+  const metrics = calculateSkill(matches);
+  assert.equal(evaluation.sample_count, 3);
+  assert.equal(evaluation.mae, 5 / 3);
+  assert.equal(evaluation.rmse, Math.sqrt(3));
+  assert.equal(evaluation.bias, 5 / 3);
+  assert.equal(evaluation.pearson_correlation, metrics.pearson_correlation);
+});
+
+test('TEST 52: creates independent rows for separate models', () => {
+  const rows = evaluateHistoricalSkill([
+    skillMatch({ id: 'model-b', modelId: 'model-b' }),
+    skillMatch({ id: 'model-a', modelId: 'model-a' }),
+  ]);
+  assert.deepEqual(rows.map((row) => row.model_id), ['model-a', 'model-b']);
+  assert.equal(rows.length, 2);
+});
+
+test('TEST 53: creates separate rows for different lead times', () => {
+  const rows = evaluateHistoricalSkill([
+    skillMatch({ id: 'lead-48', leadTimeHours: 48 }),
+    skillMatch({ id: 'lead-24', leadTimeHours: 24 }),
+  ]);
+  assert.deepEqual(rows.map((row) => row.lead_time_hours), [24, 48]);
+});
+
+test('TEST 54: derives evaluation bounds from initialization_time', () => {
+  const rows = evaluateHistoricalSkill([
+    skillMatch({ id: 'bounds-late', initializationTime: '2026-09-22T00:00:00Z' }),
+    skillMatch({ id: 'bounds-early', initializationTime: '2026-09-20T00:00:00Z' }),
+  ]);
+  assert.equal(rows[0].evaluation_start, '2026-09-20T00:00:00Z');
+  assert.equal(rows[0].evaluation_end, '2026-09-22T00:00:00Z');
+});
+
+test('TEST 55: preserves model versions including null', () => {
+  const rows = evaluateHistoricalSkill([
+    skillMatch({ id: 'version-null', modelVersion: null }),
+    skillMatch({ id: 'version-real', modelVersion: 'release-7' }),
+  ]);
+  assert.deepEqual(rows.map((row) => row.model_version), [null, 'release-7']);
+});
+
+test('TEST 56: applies inclusive evaluationWindow using initialization_time', () => {
+  const rows = evaluateHistoricalSkill([
+    skillMatch({ id: 'window-before', initializationTime: '2026-09-19T23:59:59Z' }),
+    skillMatch({ id: 'window-start', initializationTime: '2026-09-20T00:00:00Z' }),
+    skillMatch({ id: 'window-end', initializationTime: '2026-09-21T00:00:00Z' }),
+    skillMatch({ id: 'window-after', initializationTime: '2026-09-21T00:00:01Z' }),
+  ], {
+    evaluationWindow: {
+      start: '2026-09-20T00:00:00Z',
+      end: '2026-09-21T00:00:00Z',
+    },
+  });
+  assert.equal(rows[0].sample_count, 2);
+  assert.equal(rows[0].evaluation_start, '2026-09-20T00:00:00Z');
+  assert.equal(rows[0].evaluation_end, '2026-09-21T00:00:00Z');
+});
+
+test('TEST 57: rejects malformed and inconsistent matched records', () => {
+  const invalidInitialization = skillMatch({ id: 'invalid-init' });
+  invalidInitialization.forecast.initialization_time = 'not-a-timestamp';
+  const invalidCases = [
+    skillMatch({ id: 'invalid-nan', forecastValue: Number.NaN }),
+    skillMatch({ id: 'invalid-infinity', observationValue: Number.POSITIVE_INFINITY }),
+    skillMatch({ id: 'invalid-error', forecast_minus_observation: 99 }),
+    invalidInitialization,
+    skillMatch({ id: 'invalid-lead', leadTimeHours: -24 }),
+  ];
+  invalidCases[2].forecast_minus_observation = 99;
+  for (const match of invalidCases) assert.throws(() => evaluateHistoricalSkill([match]), /matches\[0\] is invalid/);
+});
+
+test('TEST 58: creates deterministic table rows with the requested columns', () => {
+  const rows = evaluateHistoricalSkill([
+    skillMatch({ id: 'table-b', modelId: 'model-b' }),
+    skillMatch({ id: 'table-a', modelId: 'model-a' }),
+  ]);
+  const table = createSkillEvaluationTable([...rows].reverse());
+  assert.deepEqual(Object.keys(table[0]), [
+    'model_id',
+    'model_version',
+    'variable',
+    'lead_time_hours',
+    'mae',
+    'rmse',
+    'bias',
+    'pearson_correlation',
+    'sample_count',
+    'evaluation_start',
+    'evaluation_end',
+    'methodology_version',
+  ]);
+  assert.deepEqual(table.map((row) => row.model_id), ['model-a', 'model-b']);
+  assert.deepEqual(summarizeSkillByLead([...rows].reverse()).map((row) => row.model_id), ['model-a', 'model-b']);
+});
+
+test('TEST 59: walk-forward metrics use only each fold evaluation partition', () => {
+  const matches = [
+    skillMatch({ id: 'wf-train', initializationTime: '2026-09-20T00:00:00Z', forecastValue: 100, observationValue: 0 }),
+    skillMatch({ id: 'wf-eval-1', initializationTime: '2026-09-21T00:00:00Z', forecastValue: 12, observationValue: 10 }),
+    skillMatch({ id: 'wf-eval-2', initializationTime: '2026-09-22T00:00:00Z', forecastValue: 15, observationValue: 10 }),
+  ];
+  const rows = evaluateWalkForwardSkill(matches, { initialTrainSize: 1, evaluationSize: 1 });
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((row) => row.sample_count), [1, 1]);
+  assert.deepEqual(rows.map((row) => row.rmse), [2, 5]);
+  assert.ok(rows.every((row) => row.rmse !== 100));
+});
+
+test('TEST 60: walk-forward evaluations include fold id and training cutoff', () => {
+  const rows = evaluateWalkForwardSkill([
+    skillMatch({ id: 'wf-meta-1', initializationTime: '2026-09-20T00:00:00Z' }),
+    skillMatch({ id: 'wf-meta-2', initializationTime: '2026-09-21T00:00:00Z' }),
+  ], { initialTrainSize: 1, evaluationSize: 1 });
+  assert.equal(rows[0].fold_id, 'walk-forward-001');
+  assert.equal(rows[0].training_cutoff, '2026-09-20T00:00:00Z');
+  assert.equal(rows[0].evaluation_start, '2026-09-21T00:00:00Z');
+  assert.equal(rows[0].evaluation_end, '2026-09-21T00:00:00Z');
+  assert.deepEqual(rows[0].fold_metadata, {
+    fold_id: 'walk-forward-001',
+    training_cutoff: '2026-09-20T00:00:00Z',
+    evaluation_start: '2026-09-21T00:00:00Z',
+    evaluation_end: '2026-09-21T00:00:00Z',
+  });
+});
+
+test('TEST 61: walk-forward output is chronological and deterministic', () => {
+  const matches = [
+    skillMatch({ id: 'wf-z', modelId: 'model-z', initializationTime: '2026-09-22T00:00:00Z' }),
+    skillMatch({ id: 'wf-b', modelId: 'model-b', initializationTime: '2026-09-21T00:00:00Z' }),
+    skillMatch({ id: 'wf-a', modelId: 'model-a', initializationTime: '2026-09-20T00:00:00Z' }),
+  ];
+  const options = { initialTrainSize: 1, evaluationSize: 1 };
+  const first = evaluateWalkForwardSkill(matches, options);
+  const second = evaluateWalkForwardSkill(matches, options);
+  assert.deepEqual(first, second);
+  assert.deepEqual(first.map((row) => row.fold_id), ['walk-forward-001', 'walk-forward-002']);
+  assert.deepEqual(first.map((row) => row.model_id), ['model-b', 'model-z']);
+});
+
+test('TEST 62: historical and walk-forward evaluation do not mutate inputs', () => {
+  const matches = [
+    skillMatch({ id: 'immutable-2', initializationTime: '2026-09-21T00:00:00Z' }),
+    skillMatch({ id: 'immutable-1', initializationTime: '2026-09-20T00:00:00Z' }),
+  ];
+  const snapshot = structuredClone(matches);
+  Object.freeze(matches);
+  for (const match of matches) {
+    Object.freeze(match.forecast.location);
+    Object.freeze(match.forecast);
+    Object.freeze(match.observation.location);
+    Object.freeze(match.observation);
+    Object.freeze(match);
+  }
+  evaluateHistoricalSkill(matches);
+  evaluateWalkForwardSkill(matches, { initialTrainSize: 1, evaluationSize: 1 });
+  assert.deepEqual(matches, snapshot);
+});
+
+test('TEST 63: applies model, variable, lead, and methodology options', () => {
+  const matches = [
+    skillMatch({ id: 'filter-a', modelId: 'model-a', leadTimeHours: 24 }),
+    skillMatch({ id: 'filter-b', modelId: 'model-b', leadTimeHours: 48 }),
+    skillMatch({ id: 'filter-c', modelId: 'model-a', variable: 'wind_speed', leadTimeHours: 24 }),
+  ];
+  const filtered = evaluateHistoricalSkill(matches, {
+    model_ids: ['model-a'],
+    variable: 'temperature',
+    lead_time_hours: 24,
+    methodology_version: 'test-method-v2',
+  });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].model_id, 'model-a');
+  assert.equal(filtered[0].methodology_version, 'test-method-v2');
+  assert.deepEqual(evaluateHistoricalSkill(matches, { model_ids: ['absent-model'] }), []);
 });
