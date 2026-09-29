@@ -1,5 +1,3 @@
-"""GET /api/extremes - blended forecast vs IMD thresholds; alert only when a
-threshold is actually crossed."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
