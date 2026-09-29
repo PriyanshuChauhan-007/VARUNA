@@ -1,23 +1,3 @@
-"""Alignment of multi-model forecasts with the ERA5 reference.
-
-Produces the training/analysis table with exactly the columns required by
-the data spec:
-
-  timestamp, season, region_id, latitude, longitude, elevation_m, variable,
-  lead_time_hours, reference_val, ensemble_mean, ensemble_spread,
-  day_of_year, hour_of_day, month, regime, regime_index,
-  and per model (ecmwf_ifs, ecmwf_aifs, cep_gfs, dwd_icon):
-      <model>_val, <model>_err, <model>_abs_err, <model>_sq_err
-
-Rules (Section 2):
-* Only timestamps present in BOTH the previous-runs forecast and the ERA5
-  reference are used.
-* A row is kept only when ALL FOUR models have non-null values (no
-  fabricated fill, no zero substitution).
-* ERA5 is the verification reference - never a forecast-time feature.
-* Split is chronological by UNIQUE timestamp: earliest 65% train, next 15%
-  validation, final 20% test. All rows sharing a timestamp stay together.
-"""
 from __future__ import annotations
 
 import math
@@ -77,7 +57,6 @@ def collect_window_rows(
     variables: Iterable[str],
     leads: Iterable[int],
 ) -> list[dict]:
-    """Fetch one benchmark window for one region and return aligned rows."""
     region = REGIONS[region_id]
     lat, lon = region["lat"], region["lon"]
     leads = list(leads)
@@ -99,8 +78,6 @@ def collect_window_rows(
 
         for lead in leads:
             suffix = LEAD_TO_PREVIOUS_DAY[lead]
-            # ensemble (forecast-time) context for the regime classifier - model
-            # values only, ERA5 never enters the feature path.
             ctx: dict[str, float | None] = {}
             for var in ("temperature", "rainfall", "wind_speed", "pressure"):
                 field = f"{VARIABLES[var]['openmeteo']}_{suffix}"
@@ -127,7 +104,6 @@ def collect_window_rows(
                     member_values[m] = _num(series[i]) if series else None
 
                 if any(v is None for v in member_values.values()):
-                    # Require all 4 models non-null; drop otherwise (no fill).
                     continue
 
                 ref = _num(era5["values"].get(var, [None] * len(era5["time"]))[j])
@@ -181,7 +157,7 @@ def collect_all_rows(
                 all_rows.extend(
                     collect_window_rows(region_id, window, start, end, variables, leads)
                 )
-            except Exception as exc:  # noqa: BLE001 - keep pipeline robust
+            except Exception as exc:
                 print(f"  !! {region_id}/{window} failed: {exc}", flush=True)
     df = pd.DataFrame(all_rows, columns=ALIGNED_COLUMNS)
     if len(df):
@@ -190,10 +166,6 @@ def collect_all_rows(
 
 
 def split_partitions(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Chronological split by UNIQUE timestamp (65/15/20), no shuffling.
-
-    Every row sharing a timestamp lands in the same partition.
-    """
     if len(df) == 0:
         return df.copy(), df.copy(), df.copy()
     timestamps = sorted(df["timestamp"].unique())
