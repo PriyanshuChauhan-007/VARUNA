@@ -1,30 +1,3 @@
-"""End-to-end offline pipeline (Phase 1).
-
-Run with:   python scripts/run_pipeline.py
-      or:   python -m app.science.run_pipeline
-
-Steps
------
-1. Collect aligned forecast/ERA5 rows for 6 benchmarked regions x 4 windows
-   x 4 leads -> data/aligned_multi_season_lead_data.csv
-2. Chronological split by unique timestamp (65/15/20, no shuffle).
-3. Train one XGBRegressor per model (80 trees, depth 4, lr 0.06) on TRAIN;
-   validation partition is scored but never fitted on.
-4. Reports (honest scopes):
-     reports/model_skill.csv            full_dataset_all_splits
-     reports/skill_by_lead.csv          full_dataset_all_splits
-     reports/skill_by_season.csv        full_dataset_all_splits
-     reports/skill_by_region.csv        full_dataset_all_splits
-     reports/blend_test_results.csv     held_out_test
-     reports/adaptive_weights.csv       full_dataset_all_splits
-     reports/feature_importance.png
-     data/provenance.json
-5. Saves models/xgboost_meta_temperature.joblib
-6. Builds data/replay/timelines.json from the Post-Monsoon window.
-
-Nothing here fabricates data: if a fetch fails the window is skipped and
-recorded in provenance under 'failed_fetches'.
-"""
 from __future__ import annotations
 
 import json
@@ -36,11 +9,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# allow "python -m app.science.run_pipeline" and direct import
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from app.config import (  # noqa: E402
+from app.config import (
     ALIGNED_CSV,
     ATTRIBUTION,
     BENCHMARK_REGION_IDS,
@@ -58,15 +30,15 @@ from app.config import (  # noqa: E402
     SPLIT_VAL,
     VARIABLES,
 )
-from app.science.alignment import collect_all_rows, split_partitions  # noqa: E402
-from app.science.meta_model import (  # noqa: E402
+from app.science.alignment import collect_all_rows, split_partitions
+from app.science.meta_model import (
     feature_importances,
     predict_errors,
     save_bundle,
     train_meta_model,
 )
-from app.science.verification import metrics, round_metrics  # noqa: E402
-from app.science.weighting import (  # noqa: E402
+from app.science.verification import metrics, round_metrics
+from app.science.weighting import (
     blend_value,
     hamilton_hare,
     static_inverse_rmse_weights,
@@ -97,9 +69,6 @@ def _library_versions() -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Blend systems evaluated on a partition
-# ---------------------------------------------------------------------------
 def _equal_weights() -> dict[str, int]:
     return hamilton_hare({m: 1.0 for m in MODEL_KEYS})
 
@@ -110,7 +79,6 @@ def evaluate_systems(
     static_weights: dict[str, int],
     equal_weights: dict[str, int],
 ) -> dict[str, dict]:
-    """Return {system: metrics} for one partition of rows."""
     ref = df["reference_val"].to_numpy(dtype=float)
 
     cols = {m: df[f"{m}_val"].to_numpy(dtype=float) for m in MODEL_KEYS}
@@ -130,7 +98,6 @@ def evaluate_systems(
         )
     ]
 
-    # VARUNA adaptive: per-row integer weights from predicted errors
     adaptive = np.empty(len(df), dtype=float)
     for pos, idx in enumerate(df.index):
         errs = {m: float(predicted[m].loc[idx]) for m in MODEL_KEYS}
@@ -235,14 +202,12 @@ def run_pipeline(variables: list[str] | None = None, progress: bool = True) -> d
         "validation": [val_df["timestamp"].min(), val_df["timestamp"].max()],
         "test": [test_df["timestamp"].min(), test_df["timestamp"].max()],
     }
-    # leakage guard: partitions must be disjoint in timestamps
     ts_train = set(train_df["timestamp"])
     ts_val = set(val_df["timestamp"])
     ts_test = set(test_df["timestamp"])
     assert not (ts_train & ts_val) and not (ts_train & ts_test) and not (ts_val & ts_test), \
         "timestamp leakage between partitions"
 
-    # main trained variable (temperature by default)
     main_var = variables[0]
     provenance["trained_variable"] = main_var
 
@@ -255,7 +220,6 @@ def run_pipeline(variables: list[str] | None = None, progress: bool = True) -> d
         print("[4/6] Scoring partitions and evaluating blend systems ...", flush=True)
     predicted = predict_errors(bundle, df)
 
-    # static inverse-RMSE weights from TRAIN partition ONLY
     train_rmses = {}
     for m in MODEL_KEYS:
         train_rmses[m] = float(np.sqrt(train_df[f"{m}_sq_err"].mean()))
@@ -264,7 +228,6 @@ def run_pipeline(variables: list[str] | None = None, progress: bool = True) -> d
     provenance["static_inverse_rmse_weights_train_only"] = static_weights
     provenance["train_rmse_per_model"] = {k: round(v, 4) for k, v in train_rmses.items()}
 
-    # --- held-out test table -------------------------------------------
     test_pred = _subset(predicted, test_df.index)
     test_systems = evaluate_systems(test_df, test_pred, static_weights, equal_weights)
     test_rows = [
@@ -276,7 +239,6 @@ def run_pipeline(variables: list[str] | None = None, progress: bool = True) -> d
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(test_rows).to_csv(BLEND_TEST_CSV, index=False)
 
-    # --- full-dataset reports ------------------------------------------
     full_rows = []
     full_rows += _skill_rows(df, predicted, static_weights, equal_weights, None, SCOPE_FULL)
     full_rows += _skill_rows(df, predicted, static_weights, equal_weights, "lead_time_hours", SCOPE_FULL)
@@ -290,8 +252,6 @@ def run_pipeline(variables: list[str] | None = None, progress: bool = True) -> d
     pd.DataFrame(overall).to_csv(REPORTS_DIR / "model_skill.csv", index=False)
 
     def _dump(dim: str, filename: str) -> None:
-        # rows built with group_col=None carry the key "group" (value "all"),
-        # grouped rows carry the dimension name itself.
         rows = [r for r in full_rows if r.get(dim, "all") != "all"]
         pd.DataFrame(rows).to_csv(REPORTS_DIR / filename, index=False)
 
@@ -301,7 +261,6 @@ def run_pipeline(variables: list[str] | None = None, progress: bool = True) -> d
 
     if progress:
         print("[5/6] Adaptive weights table + feature importance ...", flush=True)
-    # adaptive weights: region x season x lead x regime -> integers summing 100
     group_cols = ["region_id", "season", "lead_time_hours", "regime", "regime_index"]
     aw_rows = []
     for keys, gdf in df.groupby(group_cols):
@@ -368,12 +327,6 @@ def _plot_feature_importance(bundle: dict) -> None:
 
 
 def build_replay(bundle: dict, df: pd.DataFrame) -> dict:
-    """Replay timelines from the Post-Monsoon window (Section: REPLAY mode).
-
-    region -> lead -> {times, members, weights, blend, regime_index, regime}
-    Values are archived previous-runs forecasts; weights are the adaptive
-    weights produced by the trained meta-model for those rows.
-    """
     season = "post_monsoon"
     sub = df[df["season"] == season].copy()
     if len(sub) == 0:
