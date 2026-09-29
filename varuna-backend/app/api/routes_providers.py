@@ -1,4 +1,3 @@
-"""GET /api/providers/status - live health probes + provenance + artifacts."""
 from __future__ import annotations
 
 from fastapi import APIRouter
