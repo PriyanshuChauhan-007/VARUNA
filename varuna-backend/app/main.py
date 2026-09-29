@@ -1,14 +1,9 @@
-"""VARUNA FastAPI application.
-
-Run:  uvicorn app.main:app --reload --port 8000   (from varuna-backend/)
-CORS allows the Vite dev server at http://localhost:5173.
-"""
 from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import (  # noqa: F401
+from .api import (
     routes_explain,
     routes_extremes,
     routes_forecast,
