@@ -1,19 +1,14 @@
-"""Build only the replay archive (data/replay/timelines.json) from an existing
-aligned CSV + trained model.
-
-    python scripts/build_replay.py
-"""
 import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import pandas as pd  # noqa: E402
+import pandas as pd
 
-from app.config import ALIGNED_CSV, REPLAY_TIMELINES  # noqa: E402
-from app.science.meta_model import load_bundle  # noqa: E402
-from app.science.run_pipeline import build_replay  # noqa: E402
+from app.config import ALIGNED_CSV, REPLAY_TIMELINES
+from app.science.meta_model import load_bundle
+from app.science.run_pipeline import build_replay
 
 if __name__ == "__main__":
     if not ALIGNED_CSV.exists():
