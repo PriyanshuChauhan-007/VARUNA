@@ -2,27 +2,35 @@ import { useEffect, useRef } from 'react';
 import { Marker, Popup } from 'maplibre-gl';
 import { useMap } from './mapContext';
 import { useStore } from '../../store/useStore';
-import { REGIONS, getDeterministicForecast, RISK_TIERS } from '../../data/mockData.js';
+import { RISK_TIERS, regimeName, MODELS } from '../../data/referenceData.js';
+import { entryAtLead, leadToHours, alertTier, UI_TO_MODEL_KEY } from '../../services/api';
+
+const MEMBER_ROWS = ['ecmwf_ifs', 'ecmwf_aifs', 'cep_gfs', 'dwd_icon'];
+const MODEL_BY_KEY = Object.fromEntries(MODELS.filter((m) => m.key).map((m) => [m.key, m]));
 
 export default function ForecastLayer() {
   const { map, mapReady, flyTo } = useMap() || {};
   const selectedRegionId = useStore((s) => s.selectedRegionId);
   const selectRegion = useStore((s) => s.selectRegion);
-  const selectedVariable = useStore((s) => s.selectedVariable);
   const selectedLeadTime = useStore((s) => s.selectedLeadTime);
   const selectedModelLayer = useStore((s) => s.selectedModelLayer);
+  const regions = useStore((s) => s.regions);
+  const regionalForecasts = useStore((s) => s.regionalForecasts);
+  const regionalExtremes = useStore((s) => s.regionalExtremes);
 
   const markersRef = useRef([]);
   const popupRef = useRef(null);
 
+  const leadHours = leadToHours(selectedLeadTime);
+
   // Pan to selected region smoothly
   useEffect(() => {
     if (!map || !mapReady || !selectedRegionId || !flyTo) return;
-    const reg = REGIONS.find((r) => r.id === selectedRegionId);
+    const reg = regions.find((r) => r.id === selectedRegionId);
     if (reg) {
       flyTo([reg.lng, reg.lat], Math.max(map.getZoom(), 6.5));
     }
-  }, [map, mapReady, selectedRegionId, flyTo]);
+  }, [map, mapReady, selectedRegionId, flyTo, regions]);
 
   // Render HTML markers for each forecast region
   useEffect(() => {
@@ -32,20 +40,26 @@ export default function ForecastLayer() {
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
-    REGIONS.forEach((region) => {
-      const forecast = getDeterministicForecast(region.id, selectedVariable, selectedLeadTime);
+    regions.forEach((region) => {
+      const forecast = regionalForecasts[region.id] || null;
+      const extremes = regionalExtremes[region.id] || null;
+      const entry = forecast ? entryAtLead(forecast.timeline, leadHours) : null;
+      const tier = extremes ? alertTier(extremes.alerts).tier : null;
       const isSelected = region.id === selectedRegionId;
-      const color = RISK_TIERS[forecast.alertLevel] || '#D97706';
+      const color = tier ? RISK_TIERS[tier] : '#64748B';
 
-      // Pick display value according to selected model layer
-      let displayVal = forecast.forecastValue;
-      if (selectedModelLayer === 'ifs') displayVal = forecast.models.ifs.value;
-      if (selectedModelLayer === 'aifs') displayVal = forecast.models.aifs.value;
-      if (selectedModelLayer === 'gfs') displayVal = forecast.models.gfs.value;
+      // Display value for the selected model layer
+      let displayVal = entry?.blend ?? null;
+      if (selectedModelLayer !== 'blend' && entry) {
+        displayVal = entry.models?.[UI_TO_MODEL_KEY[selectedModelLayer]] ?? null;
+      }
+      const unit = forecast?.unit ?? '';
 
       const el = document.createElement('div');
       el.className = 'varuna-map-marker';
       el.style.cursor = 'pointer';
+
+      const valueText = displayVal === null || displayVal === undefined ? '…' : displayVal;
 
       el.innerHTML = `
         <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
@@ -67,7 +81,7 @@ export default function ForecastLayer() {
             transition: transform 0.15s ease;
           ">
             <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: ${color};"></span>
-            <span>${displayVal} <span style="font-size: 9px; opacity: 0.8;">${forecast.unit}</span></span>
+            <span>${valueText}${unit ? ` <span style="font-size: 9px; opacity: 0.8;">${unit}</span>` : ''}</span>
           </div>
           <div style="
             font-family: 'Inter', sans-serif;
@@ -88,30 +102,33 @@ export default function ForecastLayer() {
 
       el.addEventListener('mouseenter', () => {
         if (popupRef.current) popupRef.current.remove();
+
+        const memberHtml = entry
+          ? MEMBER_ROWS.map((key) => {
+              const m = MODEL_BY_KEY[key];
+              const v = entry.models?.[key];
+              const w = entry.weights?.[key];
+              return `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 2px; font-size: 11px;">
+                  <span style="color: #75756C;">${m?.name || key}:</span>
+                  <span style="font-family: 'JetBrains Mono', monospace;">${v ?? '—'} ${unit} (${w ?? '—'}%)</span>
+                </div>`;
+            }).join('')
+          : '<div style="font-size: 11px; color: #75756C;">Forecast loading…</div>';
+
         popupRef.current = new Popup({ offset: 25, closeButton: false })
           .setLngLat([region.lng, region.lat])
           .setHTML(`
-            <div style="padding: 10px; font-family: 'Inter', sans-serif; font-size: 12px; min-width: 180px;">
+            <div style="padding: 10px; font-family: 'Inter', sans-serif; font-size: 12px; min-width: 190px;">
               <div style="font-weight: 700; color: #1A1A17; margin-bottom: 2px;">${region.name}</div>
               <div style="font-size: 10px; color: #75756C; margin-bottom: 6px;">${region.zone}</div>
               <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                <span style="color: #484841;">VARUNA Blend:</span>
-                <strong style="color: #D97706; font-family: 'JetBrains Mono', monospace;">${forecast.forecastValue} ${forecast.unit}</strong>
+                <span style="color: #484841;">VARUNA Blend (+${selectedLeadTime}):</span>
+                <strong style="color: #D97706; font-family: 'JetBrains Mono', monospace;">${entry?.blend ?? '—'} ${unit}</strong>
               </div>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 2px; font-size: 11px;">
-                <span style="color: #75756C;">ECMWF AIFS:</span>
-                <span style="font-family: 'JetBrains Mono', monospace;">${forecast.models.aifs.value} ${forecast.unit} (${forecast.models.aifs.weight}%)</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 2px; font-size: 11px;">
-                <span style="color: #75756C;">NOAA GFS:</span>
-                <span style="font-family: 'JetBrains Mono', monospace;">${forecast.models.gfs.value} ${forecast.unit} (${forecast.models.gfs.weight}%)</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; font-size: 11px;">
-                <span style="color: #75756C;">ECMWF IFS:</span>
-                <span style="font-family: 'JetBrains Mono', monospace;">${forecast.models.ifs.value} ${forecast.unit} (${forecast.models.ifs.weight}%)</span>
-              </div>
+              ${memberHtml}
               <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid #E8E5DE; font-size: 10px; color: #16A34A; font-weight: 600;">
-                Click to inspect adaptive weighting
+                ${forecast ? `${forecast.data_mode} · ${regimeName(entry?.regime_index) || forecast.regime?.name || ''}` : 'Click to inspect'}
               </div>
             </div>
           `)
@@ -144,7 +161,7 @@ export default function ForecastLayer() {
         popupRef.current = null;
       }
     };
-  }, [map, mapReady, selectedRegionId, selectedVariable, selectedLeadTime, selectedModelLayer, selectRegion]);
+  }, [map, mapReady, selectedRegionId, selectedLeadTime, selectedModelLayer, selectRegion, regions, regionalForecasts, regionalExtremes, leadHours]);
 
   return null;
 }

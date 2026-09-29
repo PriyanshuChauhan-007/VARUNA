@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMap } from './mapContext';
 import { useStore } from '../../store/useStore';
-import { REGIONS, VARIABLES, MODELS } from '../../data/mockData.js';
+import { VARIABLES, MODELS } from '../../data/referenceData.js';
 
 export default function MapControls() {
   const { flyTo, changeBasemap, basemap, viewCoords } = useMap() || {};
@@ -11,7 +11,8 @@ export default function MapControls() {
   const setModelLayer = useStore((s) => s.setModelLayer);
   const selectRegion = useStore((s) => s.selectRegion);
   const setFilter = useStore((s) => s.setFilter);
-  const effectiveMode = useStore((s) => s.effectiveMode);
+  const regions = useStore((s) => s.regions);
+  const dataMode = useStore((s) => s.dataMode);
 
   const [searchValue, setSearchValue] = useState('');
 
@@ -30,7 +31,7 @@ export default function MapControls() {
 
     // Check matching region
     const term = searchValue.toLowerCase().trim();
-    const match = REGIONS.find(
+    const match = regions.find(
       (r) =>
         r.name.toLowerCase().includes(term) ||
         r.state.toLowerCase().includes(term) ||
@@ -72,7 +73,7 @@ export default function MapControls() {
           @{viewCoords?.lat ?? '22.59'}, {viewCoords?.lng ?? '78.96'}, {viewCoords?.zoom ?? '4.5'}z
         </div>
         <span className="bg-amber-950/90 text-amber-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-500/40">
-          12 Zones ({effectiveMode === 'LIVE' ? 'Live' : effectiveMode === 'REPLAY' ? 'Replay' : 'Demo'} Mode)
+          {regions.length} Zones ({dataMode || 'API'} mode)
         </span>
       </div>
 
@@ -124,7 +125,7 @@ export default function MapControls() {
           </button>
           <button
             onClick={() => flyTo && flyTo([73.6586, 17.9237], 7.5)}
-            className="px-2.5 h-8 text-[11px] font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            className="px-2.5 h-8 text-[11px] font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors border-r border-slate-700 cursor-pointer"
           >
             Western Ghats
           </button>
@@ -156,6 +157,7 @@ export default function MapControls() {
             <button
               key={v.id}
               onClick={() => setVariable(v.id)}
+              title={v.validated ? 'Validated variable' : 'Unvalidated variable (equal fallback weights)'}
               className={`px-2.5 h-7 text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 ${
                 selectedVariable === v.id
                   ? 'bg-slate-800 text-amber-300 border-b-2 border-amber-400 font-bold'
@@ -164,6 +166,7 @@ export default function MapControls() {
             >
               <span>{v.icon}</span>
               <span>{v.label}</span>
+              {!v.validated && <span className="text-[9px]">⚠</span>}
             </button>
           ))}
         </div>
@@ -181,7 +184,7 @@ export default function MapControls() {
               }`}
             >
               <span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ backgroundColor: m.color }} />
-              {m.name.replace('ECMWF ', '').replace('NOAA ', '')}
+              {m.name.replace('ECMWF ', '').replace('NOAA ', '').replace('DWD ', '')}
             </button>
           ))}
         </div>

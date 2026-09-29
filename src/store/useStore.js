@@ -1,8 +1,16 @@
 import { create } from 'zustand';
-import { REGIONS, getDeterministicForecast } from '../data/mockData.js';
-import { APPLICATION_MODES } from '../providers/types.js';
-import { getProviderMemberForecasts } from '../providers/index.js';
+import { REGIONS } from '../data/referenceData.js';
+import { getExtremes, getForecast, getRegions, onResponse } from '../services/api.js';
 
+/**
+ * Application store.
+ *
+ * UI state only (theme, selections, map, filters) plus server-backed state
+ * that several views share (regions list, per-region forecast/extremes for
+ * the Command Centre + map, and the global data_mode/attribution badges).
+ * There is no local forecast generator anywhere: every value originates from
+ * the FastAPI backend.
+ */
 export const useStore = create((set, get) => ({
   // Theme: light | dark
   theme: 'light',
@@ -23,15 +31,7 @@ export const useStore = create((set, get) => ({
   selectedRegionId: 'delhi_ncr',
   selectedVariable: 'rainfall',
   selectedLeadTime: '48h',
-  selectedModelLayer: 'blend', // 'blend' | 'ifs' | 'aifs' | 'gfs'
-
-  // Model Cycle Timestamps (Section 14)
-  initializationTime: '2026-09-26T00:00:00Z',
-  getValidTime: () => {
-    const init = new Date(get().initializationTime);
-    const hours = parseInt(get().selectedLeadTime, 10) || 48;
-    return new Date(init.getTime() + hours * 3600 * 1000).toISOString();
-  },
+  selectedModelLayer: 'blend', // 'blend' | 'ifs' | 'aifs' | 'gfs' | 'icon'
 
   // Drawer status
   drawerOpen: false,
@@ -48,86 +48,126 @@ export const useStore = create((set, get) => ({
     sort: 'ALERT', // 'ALERT' | 'FORECAST' | 'NAME'
   },
 
-  // System Mode (Section 12 & 18): 'DEMO' | 'LIVE' | 'REPLAY'
-  // Default is DEMO as external live providers are not authenticated/connected
-  systemMode: APPLICATION_MODES.DEMO,
-  effectiveMode: APPLICATION_MODES.DEMO,
-  syncStatus: 'STANDBY', // 'STANDBY' | 'SYNCING' | 'CONNECTED' | 'FALLBACK_DEMO'
-  syncErrorNote: null,
-  loading: false,
+  // -------------------------------------------------------------------------
+  // Global API status badges (LIVE | CACHED | REPLAY reported by the backend)
+  // -------------------------------------------------------------------------
+  dataMode: null,
+  attribution: null,
+  apiStatus: 'unknown', // 'unknown' | 'ok'
+  noteApiResponse: ({ dataMode, attribution }) =>
+    set((s) => ({
+      dataMode: dataMode || s.dataMode,
+      attribution: attribution || s.attribution,
+      apiStatus: 'ok',
+    })),
 
-  // Actions
-  setSystemMode: async (requestedMode) => {
-    if (requestedMode === APPLICATION_MODES.DEMO) {
-      set({
-        systemMode: APPLICATION_MODES.DEMO,
-        effectiveMode: APPLICATION_MODES.DEMO,
-        syncStatus: 'STANDBY',
-        syncErrorNote: null,
+  // -------------------------------------------------------------------------
+  // Regions (static metadata + validated/benchmarked from GET /api/regions)
+  // -------------------------------------------------------------------------
+  regions: REGIONS.map((r) => ({ ...r, validated: null, benchmarked: null })),
+  regionsStatus: 'idle', // 'idle' | 'loading' | 'ready' | 'error'
+  regionsError: null,
+  loadRegions: async () => {
+    if (get().regionsStatus === 'loading') return;
+    set({ regionsStatus: 'loading', regionsError: null });
+    try {
+      const payload = await getRegions();
+      const list = Array.isArray(payload) ? payload : payload.regions || [];
+      const regions = REGIONS.map((r) => {
+        const apiRegion = list.find((x) => x.id === r.id);
+        return apiRegion
+          ? { ...r, validated: !!apiRegion.validated, benchmarked: !!apiRegion.benchmarked }
+          : { ...r, validated: null, benchmarked: null };
       });
-      return;
-    }
-
-    if (requestedMode === APPLICATION_MODES.REPLAY) {
+      set({ regions, regionsStatus: 'ready', regionsError: null });
+    } catch (err) {
       set({
-        systemMode: APPLICATION_MODES.REPLAY,
-        effectiveMode: APPLICATION_MODES.REPLAY,
-        syncStatus: 'STANDBY',
-        syncErrorNote: 'Replaying archived 00z reference cycle against ERA5 reanalysis',
+        regionsStatus: 'error',
+        regionsError: err?.message || String(err),
       });
-      return;
-    }
-
-    if (requestedMode === APPLICATION_MODES.LIVE) {
-      set({
-        systemMode: APPLICATION_MODES.LIVE,
-        syncStatus: 'SYNCING',
-        loading: true,
-      });
-
-      try {
-        const { selectedRegionId, selectedVariable, selectedLeadTime } = get();
-        const activeRegion = REGIONS.find((r) => r.id === selectedRegionId) || REGIONS[0];
-        const activeVar = { id: selectedVariable, unit: 'mm' };
-        const leadHours = parseInt(selectedLeadTime, 10) || 48;
-
-        const liveResult = await getProviderMemberForecasts({
-          region: activeRegion,
-          variable: activeVar,
-          leadTimeHours: leadHours,
-          mode: APPLICATION_MODES.LIVE,
-        });
-
-        if (liveResult.mode === APPLICATION_MODES.LIVE) {
-          set({
-            effectiveMode: APPLICATION_MODES.LIVE,
-            syncStatus: 'CONNECTED',
-            syncErrorNote: null,
-            loading: false,
-          });
-        } else {
-          // Live provider unavailable, fall back safely to DEMO mode (Section 12)
-          set({
-            effectiveMode: APPLICATION_MODES.DEMO,
-            syncStatus: 'FALLBACK_DEMO',
-            syncErrorNote: 'Live external provider sync unavailable. Active mode maintained as DEMO.',
-            loading: false,
-          });
-        }
-      } catch {
-        set({
-          effectiveMode: APPLICATION_MODES.DEMO,
-          syncStatus: 'FALLBACK_DEMO',
-          syncErrorNote: 'Live provider connection failed. Reverted to DEMO mode.',
-          loading: false,
-        });
-      }
     }
   },
 
+  // -------------------------------------------------------------------------
+  // Bulk regional data for the Command Centre watchlist + map markers.
+  // Phase 1: GET /api/forecast per region (parallel).
+  // Phase 2: GET /api/extremes per region — only after phase 1 so each
+  //          region's provider series is already cached backend-side.
+  // -------------------------------------------------------------------------
+  regionalKey: null, // `${variable}|${leadHours}`
+  regionalStatus: 'idle', // 'idle' | 'loading' | 'ready' | 'error'
+  regionalError: null,
+  regionalForecasts: {}, // regionId -> forecast payload
+  regionalExtremes: {}, // regionId -> extremes payload
+  regionalErrors: {}, // regionId -> error message (e.g. clean backend 503)
+
+  loadRegionalData: async () => {
+    const { selectedVariable, selectedLeadTime, regionalKey, regionalStatus } = get();
+    const lead = parseInt(selectedLeadTime, 10) || 48;
+    const key = `${selectedVariable}|${lead}`;
+    if (key === regionalKey && (regionalStatus === 'ready' || regionalStatus === 'loading')) {
+      return;
+    }
+
+    set({
+      regionalKey: key,
+      regionalStatus: 'loading',
+      regionalError: null,
+      regionalForecasts: {},
+      regionalExtremes: {},
+      regionalErrors: {},
+    });
+
+    const settled = await Promise.allSettled(
+      REGIONS.map((r) => getForecast({ region: r.id, variable: selectedVariable, leadTimeHours: lead }))
+    );
+    if (get().regionalKey !== key) return; // superseded by a newer selection
+
+    const forecasts = {};
+    const errors = {};
+    const okIds = [];
+    settled.forEach((res, i) => {
+      const id = REGIONS[i].id;
+      if (res.status === 'fulfilled') {
+        forecasts[id] = res.value;
+        okIds.push(id);
+      } else {
+        errors[id] = res.reason?.message || 'Forecast unavailable.';
+      }
+    });
+
+    if (okIds.length === 0) {
+      set({
+        regionalStatus: 'error',
+        regionalError: Object.values(errors)[0] || 'No regional forecast available.',
+        regionalForecasts: {},
+        regionalErrors: errors,
+      });
+      return;
+    }
+
+    set({ regionalForecasts: forecasts, regionalErrors: errors });
+
+    const extSettled = await Promise.allSettled(
+      okIds.map((id) => getExtremes({ region: id, leadTimeHours: lead }))
+    );
+    if (get().regionalKey !== key) return;
+
+    const extremes = {};
+    extSettled.forEach((res, i) => {
+      if (res.status === 'fulfilled') extremes[okIds[i]] = res.value;
+    });
+    set({ regionalExtremes: extremes, regionalStatus: 'ready' });
+  },
+
+  // -------------------------------------------------------------------------
+  // Selections & UI actions
+  // -------------------------------------------------------------------------
   selectRegion: (regionId) => {
     set({ selectedRegionId: regionId, drawerOpen: true });
   },
+  /** Select without opening the detail drawer (list/selector contexts). */
+  focusRegion: (regionId) => set({ selectedRegionId: regionId }),
   openDrawer: () => set({ drawerOpen: true }),
   closeDrawer: () => set({ drawerOpen: false }),
 
@@ -143,49 +183,8 @@ export const useStore = create((set, get) => ({
       filters: { ...state.filters, [key]: value },
     }));
   },
-
-  // Helper selector for active forecast calculation
-  getCurrentForecast: () => {
-    const { selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode } = get();
-    return getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode);
-  },
-
-  // Helper selector for region list with forecast attached
-  getRegionalForecasts: () => {
-    const { selectedVariable, selectedLeadTime, filters, effectiveMode } = get();
-    let list = REGIONS.map((region) => {
-      const forecast = getDeterministicForecast(region.id, selectedVariable, selectedLeadTime, effectiveMode);
-      return {
-        ...region,
-        forecast,
-      };
-    });
-
-    if (filters.alertLevel !== 'ALL') {
-      list = list.filter((r) => r.forecast.alertLevel.toUpperCase() === filters.alertLevel);
-    }
-
-    if (filters.searchQuery) {
-      const q = filters.searchQuery.toLowerCase();
-      list = list.filter(
-        (r) =>
-          r.name.toLowerCase().includes(q) ||
-          r.state.toLowerCase().includes(q) ||
-          r.zone.toLowerCase().includes(q) ||
-          r.regime.toLowerCase().includes(q)
-      );
-    }
-
-    if (filters.sort === 'FORECAST') {
-      list.sort((a, b) => b.forecast.forecastValue - a.forecast.forecastValue);
-    } else if (filters.sort === 'NAME') {
-      list.sort((a, b) => a.name.localeCompare(b.name));
-    } else {
-      // Sort by alert severity: Critical > High > Moderate > Low
-      const order = { Critical: 4, High: 3, Moderate: 2, Low: 1 };
-      list.sort((a, b) => (order[b.forecast.alertLevel] || 0) - (order[a.forecast.alertLevel] || 0));
-    }
-
-    return list;
-  },
 }));
+
+// Feed every backend response's data_mode / attribution into the store so the
+// TopBar badge and footer always reflect the most recent real payload.
+onResponse((info) => useStore.getState().noteApiResponse(info));

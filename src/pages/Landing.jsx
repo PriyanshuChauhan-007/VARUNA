@@ -1,58 +1,58 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { getExplain, getForecast, leadToHours } from '../services/api';
+import { useApi } from '../services/useApi';
+import { regimeName } from '../data/referenceData.js';
+import { DataModeBadge, ValidatedBadge } from '../components/shared/Badges';
+
+const LEAD_HOURS = leadToHours('48h');
+
+const REGIME_REGIONS = [
+  { id: 'orographic', label: 'Orographic Precipitation', regionId: 'western_ghats' },
+  { id: 'convective', label: 'Valley Convection', regionId: 'assam_valley' },
+  { id: 'heatwave', label: 'Arid Heat Zone', regionId: 'rajasthan_thar' },
+];
+
+const MEMBER_ORDER = ['ecmwf_ifs', 'ecmwf_aifs', 'cep_gfs', 'dwd_icon'];
+const MEMBER_META = {
+  ecmwf_ifs: { name: 'ECMWF IFS', color: '#2563EB' },
+  ecmwf_aifs: { name: 'ECMWF AIFS', color: '#8B5CF6' },
+  cep_gfs: { name: 'NOAA GFS', color: '#059669' },
+  dwd_icon: { name: 'DWD ICON', color: '#0891B2' },
+};
 
 export default function Landing() {
   const [activeRegime, setActiveRegime] = useState('orographic');
+  const active = REGIME_REGIONS.find((r) => r.id === activeRegime) || REGIME_REGIONS[0];
 
-  const REGIME_EVIDENCE = {
-    orographic: {
-      title: 'High-Elevation Orographic Precipitation',
-      model: 'VARUNA XGBoost Meta-Model v2.6 · Inference 14.2ms',
-      confidence: '95%',
-      tier: 'Critical (94.2 mm)',
-      tierColor: '#DC2626',
-      factors: [
-        { name: 'ECMWF AIFS Moisture Advection', weight: 47, note: 'Captures low-level Arabian Sea jet inflow without spatial phase lag' },
-        { name: 'NOAA GFS Orographic Convection', weight: 34, note: 'High sensitivity to cloud microphysics over windward escarpments' },
-        { name: 'ECMWF IFS NWP Anchor', weight: 19, note: 'Thermodynamic mass conservation boundary constraint' },
-        { name: 'Empirical Bias Correction Kernel', weight: 92, note: 'Cancels +0.32mm systematic positive bias observed in raw IFS' },
-      ],
-    },
-    convective: {
-      title: 'Severe Convective Thunderstorm & Rain Cells',
-      model: 'VARUNA XGBoost Meta-Model v2.6 · Inference 12.8ms',
-      confidence: '91%',
-      tier: 'High (68.4 mm)',
-      tierColor: '#EA580C',
-      factors: [
-        { name: 'Deep Learning Instability Trigger', weight: 48, note: 'Transformer attention isolates localized shear and CAPE spikes' },
-        { name: 'NWP Radar Echo Correlation', weight: 32, note: 'Aligned with Doppler Weather Radar reflectivity gradients' },
-        { name: 'Boundary Layer Thermodynamic Anchor', weight: 20, note: 'Prevents unphysical artificial droplet accumulation' },
-      ],
-    },
-    heatwave: {
-      title: 'Subtropical Desert Severe Heatwave',
-      model: 'VARUNA XGBoost Meta-Model v2.6 · Inference 11.4ms',
-      confidence: '96%',
-      tier: 'Critical (44.8 °C)',
-      tierColor: '#DC2626',
-      factors: [
-        { name: 'Anti-Cyclonic Subsidence Tracking', weight: 45, note: 'Accurately tracks dry adiabatic heating over western Gujarat' },
-        { name: 'Surface Radiation Budget NWP', weight: 35, note: 'Physical solar insolation balance from ECMWF IFS' },
-        { name: 'Continental Advection Vector', weight: 20, note: 'Westerly desert wind temperature pooling verified by reference reanalysis (ground AWS integration pending)' },
-      ],
-    },
-  };
+  // Live backend data for the showcase card (temperature is the validated variable)
+  const explainQ = useApi(
+    () => getExplain({ region: active.regionId, variable: 'temperature', leadTimeHours: LEAD_HOURS }),
+    [active.regionId]
+  );
+  const forecastQ = useApi(
+    () => getForecast({ region: active.regionId, variable: 'temperature', leadTimeHours: LEAD_HOURS }),
+    [active.regionId]
+  );
 
-  const currentEvidence = REGIME_EVIDENCE[activeRegime] || REGIME_EVIDENCE.orographic;
+  const explain = explainQ.data;
+  const forecast = forecastQ.data;
+  const entry = forecast
+    ? forecast.timeline.find((e) => e.lead_time_hours === LEAD_HOURS) ||
+      forecast.timeline[forecast.timeline.length - 1]
+    : null;
+  const regionName = forecast ? forecast.region_id : active.regionId;
+
+  const loading = explainQ.loading || forecastQ.loading;
+  const error = explainQ.error || forecastQ.error;
 
   return (
     <div className="min-h-screen bg-[var(--color-surface)] text-[var(--color-text-primary)] flex flex-col font-sans transition-colors">
-      {/* Top Navbar matching THERMOS Screenshot 1 */}
+      {/* Top Navbar */}
       <header className="h-16 px-6 md:px-12 flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-panel)]/95 backdrop-blur-md sticky top-0 z-50">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-[var(--radius-md)] bg-[var(--color-accent)] flex items-center justify-center shadow-xs shrink-0">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A1A17" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <div className="w-8 h-8 rounded-[var(--radius-md)] bg-[var(--color-accent)] flex items-center justify-center shadow-xs">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1A1A17" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
               <path d="M13 13l-3 5h4l-2 5" />
             </svg>
@@ -71,11 +71,7 @@ export default function Landing() {
         </nav>
 
         <div className="flex items-center gap-4">
-          <div className="hidden sm:flex items-center gap-2 text-scale-xs font-data text-[var(--color-text-secondary)]">
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
-            <span>DEMO MODE · 00Z REFERENCE RUN</span>
-          </div>
-
+          <DataModeBadge mode={forecast?.data_mode} />
           <Link
             to="/command-centre"
             className="px-4 py-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-slate-950 font-bold text-scale-xs rounded-[var(--radius-md)] transition-all shadow-xs flex items-center gap-1.5"
@@ -86,30 +82,27 @@ export default function Landing() {
         </div>
       </header>
 
-      {/* Hero Section matching THERMOS Screenshot 1 */}
+      {/* Hero Section */}
       <section className="relative px-6 md:px-16 pt-16 pb-24 border-b border-[var(--color-border)] technical-cross-grid overflow-hidden">
         <div className="max-w-7xl mx-auto grid lg:grid-cols-12 gap-12 items-center">
           {/* Left Text */}
           <div className="lg:col-span-7 space-y-6">
-            {/* Pill Badge */}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-amber-400/80 bg-amber-50 dark:bg-amber-950/40 text-[11px] font-bold text-amber-800 dark:text-amber-300 font-data uppercase tracking-wider">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              <span>ECMWF IFS · AIFS · NOAA GFS · ADAPTIVE HYBRID METEOROLOGICAL INTELLIGENCE</span>
+              <span>ECMWF IFS · AIFS · NOAA GFS · DWD ICON · ADAPTIVE BLEND</span>
             </div>
 
-            {/* Massive Heading */}
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[var(--color-text-primary)] leading-[1.08]">
               From raw ensembles <br />
               <span className="text-[var(--color-text-secondary)]">to decisive action.</span>
             </h1>
 
-            {/* Subtitle */}
             <p className="text-scale-lg text-[var(--color-text-secondary)] max-w-2xl font-normal leading-relaxed">
-              Variable-Adaptive Regional Unified NWP-AI Assimilation (VARUNA). Blending physical weather models with spherical deep-learning transformers using contextual XGBoost meta-model regime calibration.
+              Variable-Adaptive Regional Unified NWP-AI Assimilation (VARUNA). Four operational models blended by a
+              trained XGBoost meta-model whose weights are derived from predicted error in each regime.
             </p>
 
-            {/* CTA Buttons */}
-            <div className="flex flex-wrap items-center gap-3 pt-2">
+            <div className="flex flex-wrap gap-3 pt-2">
               <Link
                 to="/command-centre"
                 className="px-6 py-3 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-slate-950 font-bold text-scale-sm rounded-[var(--radius-md)] transition-all shadow-md flex items-center gap-2"
@@ -125,149 +118,190 @@ export default function Landing() {
               </Link>
             </div>
 
-            {/* Operational Metric Strip */}
+            {/* Operational facts strip */}
             <div className="grid grid-cols-3 gap-6 pt-6 border-t border-[var(--color-border)] max-w-xl">
               <div>
                 <span className="text-[10px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider block font-data">
-                  Ingestion Feed
+                  Member Models
                 </span>
                 <span className="font-data text-scale-sm font-bold text-[var(--color-text-primary)] block mt-0.5">
-                  ECMWF IFS · GFS 0.25°
+                  4 NWP / AI Members
                 </span>
               </div>
               <div>
                 <span className="text-[10px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider block font-data">
-                  AI Deep Learning
+                  Operational Regions
                 </span>
                 <span className="font-data text-scale-sm font-bold text-[var(--color-text-primary)] block mt-0.5">
-                  ECMWF AIFS (ML)
+                  12 · 6 benchmarked
                 </span>
               </div>
               <div>
                 <span className="text-[10px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider block font-data">
-                  Adaptive Weighting
+                  Verification
                 </span>
                 <span className="font-data text-scale-sm font-bold text-emerald-600 block mt-0.5">
-                  ● XGBoost Meta-Model
+                  ● ERA5 reanalysis
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Right Floating Tactical Card matching THERMOS Screenshot 1 */}
+          {/* Right live card */}
           <div className="lg:col-span-5 flex justify-center">
             <div className="w-full max-w-md bg-[var(--color-panel)] border border-[var(--color-border)] rounded-[var(--radius-xl)] p-6 shadow-2xl relative">
               <div className="flex items-center justify-between mb-3">
-                <span className="inline-flex items-center gap-1.5 font-data text-xs font-bold text-red-600 uppercase">
-                  <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
-                  CRITICAL METEOROLOGICAL ALERT
+                <span className="inline-flex items-center gap-1.5 font-data text-xs font-bold text-[var(--color-text-secondary)] uppercase">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  Live blend snapshot
                 </span>
-                <span className="font-data text-xs font-bold px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
-                  Confidence 95%
-                </span>
+                <DataModeBadge mode={forecast?.data_mode} />
               </div>
 
               <h3 className="font-data text-scale-lg font-bold text-[var(--color-text-primary)] mb-1">
-                Western Ghats (Mahabaleshwar)
+                {regionName.replace(/_/g, ' ')}
               </h3>
               <p className="text-scale-xs text-[var(--color-text-secondary)] mb-4">
-                Orographic Cloud Burst Advisory • High Ghats Escarpment
+                {regimeName(entry?.regime_index) || forecast?.regime?.name || 'Regime classification pending'} ·
+                Temperature +{LEAD_HOURS}h
               </p>
 
-              <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-lg)] mb-4 flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] uppercase font-bold text-[var(--color-text-tertiary)]">
-                    VARUNA Blend Forecast (48h)
-                  </div>
-                  <div className="font-data text-3xl font-bold text-amber-600">
-                    94.2 <span className="text-scale-xs text-[var(--color-text-secondary)]">mm Rainfall</span>
-                  </div>
+              {loading && (
+                <div className="flex items-center justify-center h-40 text-scale-xs text-[var(--color-text-secondary)]">
+                  <span className="w-5 h-5 rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-accent)] animate-spin mr-2" />
+                  Loading from backend…
                 </div>
-                <div className="text-right font-data text-scale-xs text-[var(--color-text-secondary)]">
-                  <div>17.9237°N</div>
-                  <div>73.6586°E</div>
-                </div>
-              </div>
+              )}
 
-              {/* Weight consensus */}
-              <div className="space-y-2 mb-4">
-                <div className="flex justify-between text-scale-xs font-semibold">
-                  <span className="text-purple-600">ECMWF AIFS (Transformer ML)</span>
-                  <span className="font-data">47% Weight</span>
+              {!loading && error && (
+                <div className="p-3.5 bg-red-50 dark:bg-red-950/40 border border-red-300 rounded-[var(--radius-lg)] text-scale-xs text-red-700 dark:text-red-300">
+                  Backend unreachable — start it with{' '}
+                  <code className="font-data">uvicorn app.main:app</code> inside <code>varuna-backend</code>.
                 </div>
-                <div className="w-full h-2 bg-[var(--color-surface)] rounded-full overflow-hidden border border-[var(--color-border)]">
-                  <div className="h-full bg-purple-600 rounded-full" style={{ width: '47%' }} />
-                </div>
-              </div>
+              )}
 
-              <Link
-                to="/command-centre"
-                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-[var(--radius-md)] font-bold text-scale-xs flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <span>Inspect in Command Centre</span>
-                <span>→</span>
-              </Link>
+              {!loading && !error && forecast && (
+                <>
+                  <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-lg)] mb-4 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-[var(--color-text-tertiary)]">
+                        VARUNA Blend Forecast (+{LEAD_HOURS}h)
+                      </div>
+                      <div className="font-data text-3xl font-bold text-amber-600">
+                        {entry?.blend ?? '—'} <span className="text-scale-xs text-[var(--color-text-secondary)]">°C</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <ValidatedBadge validated={!!forecast.validated} />
+                      <div className="font-data text-[11px] text-[var(--color-text-secondary)] mt-1.5">
+                        {forecast.weighting_scheme}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Weight consensus (real) */}
+                  <div className="space-y-2 mb-4">
+                    {MEMBER_ORDER.map((key) => {
+                      const w = entry?.weights?.[key];
+                      const meta = MEMBER_META[key];
+                      return (
+                        <div key={key}>
+                          <div className="flex justify-between text-scale-xs font-semibold">
+                            <span style={{ color: meta.color }}>{meta.name}</span>
+                            <span className="font-data">
+                              {w ?? '—'}% · {entry?.models?.[key] ?? '—'} °C
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-[var(--color-surface)] rounded-full overflow-hidden border border-[var(--color-border)]">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{ width: `${w || 0}%`, backgroundColor: meta.color }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <Link
+                    to="/command-centre"
+                    className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-[var(--radius-md)] font-bold text-scale-xs flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <span>Inspect in Command Centre</span>
+                    <span>→</span>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>
       </section>
 
-      {/* Section 2: Multi-Model Ingestion matching THERMOS Screenshot 2 */}
+      {/* Section: ingestion */}
       <section className="px-6 md:px-16 py-20 border-b border-[var(--color-border)] bg-[var(--color-panel)]">
         <div className="max-w-7xl mx-auto space-y-12">
           <div>
             <span className="font-data text-scale-xs font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider block mb-1">
-              01 / MULTI-MODEL INGESTION &amp; ASSIMILATION
+              01 / MULTI-MODEL INGESTION &amp; BLENDING
             </span>
             <h2 className="text-3xl md:text-4xl font-extrabold text-[var(--color-text-primary)]">
-              Continuous NWP-AI assimilation. <br />Zero forecast gaps.
+              Four global models. One adaptive blend.
             </h2>
             <p className="mt-3 text-scale-base text-[var(--color-text-secondary)] max-w-3xl leading-relaxed">
-              Global centers sweep India on regular synoptic cycles. VARUNA streams directly from ECMWF Open Data and NOAA NOMADS — converting raw multidimensional GRIB2 grids into unified, bias-corrected regional predictions in under 60 seconds.
+              VARUNA pulls each member from the Open-Meteo API ({' '}
+              <code className="font-data text-[var(--color-text-primary)]">ecmwf_ifs025</code>,{' '}
+              <code className="font-data text-[var(--color-text-primary)]">ecmwf_aifs025_single</code>,{' '}
+              <code className="font-data text-[var(--color-text-primary)]">gfs_seamless</code>,{' '}
+              <code className="font-data text-[var(--color-text-primary)]">icon_seamless</code> ), aligns them on a
+              common timeline, and blends them with weights ∝ 1/Ê² that sum to exactly 100%. The backend falls back
+              LIVE → CACHED → REPLAY and reports which mode served every payload.
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-6">
             <div className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-xl)] shadow-xs">
               <span className="text-[10px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider block font-data">
-                Spatial Downscaling Precision
+                Operational Regions
               </span>
               <div className="font-data text-4xl font-bold text-[var(--color-text-primary)] my-3">
-                0.1° <span className="text-scale-base font-normal text-[var(--color-text-secondary)]">(~9 km)</span>
+                12 <span className="text-scale-base font-normal text-[var(--color-text-secondary)]">regions</span>
               </div>
               <p className="text-scale-xs text-[var(--color-text-secondary)] leading-relaxed">
-                Downscaled spatial resolution captures orographic ridges down to district agro-climatic boundaries.
+                6 of them are benchmarked against held-out verification windows; the other 6 run live only and are
+                labelled as such throughout the UI.
               </p>
             </div>
 
             <div className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-xl)] shadow-xs">
               <span className="text-[10px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider block font-data">
-                Multi-Center Ensemble
+                Member Framework
               </span>
               <div className="font-data text-4xl font-bold text-[var(--color-text-primary)] my-3">
-                3 <span className="text-scale-base font-normal text-[var(--color-text-secondary)]">Member Framework</span>
+                4 <span className="text-scale-base font-normal text-[var(--color-text-secondary)]">members</span>
               </div>
               <p className="text-scale-xs text-[var(--color-text-secondary)] leading-relaxed">
-                Combined streams from ECMWF IFS (9km NWP), ECMWF AIFS (Deep Learning), and NOAA GFS (13km FV3).
+                ECMWF IFS (0.25° NWP), ECMWF AIFS (AI weather model), NOAA GFS (seamless) and DWD ICON (seamless) —
+                null members are dropped and weights re-apportioned, never zero-filled.
               </p>
             </div>
 
             <div className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-xl)] shadow-xs">
               <span className="text-[10px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider block font-data">
-                XGBoost Meta-Model Latency
+                Meta-Model
               </span>
               <div className="font-data text-4xl font-bold text-emerald-600 my-3">
-                &lt;15 <span className="text-scale-base font-normal text-[var(--color-text-secondary)]">ms</span>
+                80 <span className="text-scale-base font-normal text-[var(--color-text-secondary)]">trees · depth 4</span>
               </div>
               <p className="text-scale-xs text-[var(--color-text-secondary)] leading-relaxed">
-                Near-instantaneous regime-conditioned inverse variance weighting delivers fresh blends before next cycle ingestion.
+                One XGBoost regressor per member predicts |forecast − ERA5| from 11 fixed features (lr 0.06), trained
+                on a chronological 65/15/20 split with no shuffling.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Section 3: Explainability and Evidence matching THERMOS Screenshot 3 */}
+      {/* Section: explainability */}
       <section className="px-6 md:px-16 py-20 bg-[var(--color-surface)]">
         <div className="max-w-7xl mx-auto space-y-10">
           <div>
@@ -275,17 +309,15 @@ export default function Landing() {
               A single model is not an answer.
             </h2>
             <p className="mt-3 text-scale-base text-[var(--color-text-secondary)] max-w-3xl leading-relaxed">
-              A pure physics model can suffer from parameterization bias; a pure deep learning model can produce unphysical artifacts. VARUNA fuses physics-based conservation laws with neural transformers and historical reference verification to weight each source with auditable evidence.
+              A pure physics model can suffer from parameterization bias; a pure learning model can produce unphysical
+              artifacts. VARUNA keeps every member and shows exactly how much weight each one received, why, and with
+              what predicted error — per region, variable and lead time.
             </p>
           </div>
 
-          {/* Regime Pills */}
+          {/* Regime Pills -> live region presets */}
           <div className="flex flex-wrap gap-2">
-            {[
-              { id: 'orographic', label: 'Orographic Precipitation' },
-              { id: 'convective', label: 'Convective Rain Cells' },
-              { id: 'heatwave', label: 'Severe Heatwave' },
-            ].map((reg) => (
+            {REGIME_REGIONS.map((reg) => (
               <button
                 key={reg.id}
                 onClick={() => setActiveRegime(reg.id)}
@@ -300,65 +332,98 @@ export default function Landing() {
             ))}
           </div>
 
-          {/* Auditable Feature Evidence Box matching THERMOS Screenshot 3 */}
+          {/* Auditable evidence box (live from /api/explain) */}
           <div className="bg-[var(--color-panel)] border border-[var(--color-border)] rounded-[var(--radius-xl)] p-6 md:p-8 shadow-xs max-w-4xl space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--color-border)] pb-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: currentEvidence.tierColor }} />
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
                   <h3 className="text-scale-base font-bold text-[var(--color-text-primary)]">
-                    {currentEvidence.title}
+                    {regimeName(explain?.regime?.index) || explain?.regime?.name || 'Classifying regime…'}
                   </h3>
                 </div>
                 <span className="text-[11px] font-data text-[var(--color-text-tertiary)]">
-                  {currentEvidence.model}
+                  {explain?.weighting_scheme || 'weighting pending'} · {active.regionId} · temperature · +{LEAD_HOURS}h
                 </span>
               </div>
 
               <div className="flex items-center gap-4">
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-[var(--color-text-tertiary)] block">Confidence</span>
-                  <span className="font-data text-scale-base font-bold text-[var(--color-text-primary)]">{currentEvidence.confidence}</span>
+                  <span className="text-[10px] uppercase font-bold text-[var(--color-text-tertiary)] block">Weights sum</span>
+                  <span className="font-data text-scale-base font-bold text-[var(--color-text-primary)]">
+                    {explain?.weights_sum ?? '—'}%
+                  </span>
                 </div>
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-[var(--color-text-tertiary)] block">Alert Threshold</span>
-                  <span className="font-data text-xs font-bold px-2 py-0.5 rounded text-white" style={{ backgroundColor: currentEvidence.tierColor }}>
-                    {currentEvidence.tier}
-                  </span>
+                  <span className="text-[10px] uppercase font-bold text-[var(--color-text-tertiary)] block">Validation</span>
+                  <ValidatedBadge validated={!!explain?.validated} />
                 </div>
               </div>
             </div>
 
             <div>
               <span className="font-data text-[11px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider block mb-4">
-                AUDITABLE FEATURE EVIDENCE
+                Auditable member evidence
               </span>
+              {explainQ.loading && (
+                <div className="text-scale-xs text-[var(--color-text-secondary)]">Loading live weights…</div>
+              )}
+              {explainQ.error && (
+                <div className="text-scale-xs text-red-600">
+                  Backend unreachable — no weights are shown rather than inventing any.
+                </div>
+              )}
               <div className="space-y-4">
-                {currentEvidence.factors.map((factor, i) => (
-                  <div key={i} className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-[var(--radius-md)]">
-                    <div className="flex justify-between text-scale-xs font-semibold mb-1">
-                      <span className="text-[var(--color-text-primary)] font-bold">{factor.name}</span>
-                      <span className="text-[var(--color-text-secondary)] text-[11px]">{factor.note}</span>
+                {MEMBER_ORDER.map((key) => {
+                  const meta = MEMBER_META[key];
+                  const weight = explain?.weights?.[key];
+                  const predErr = explain?.predicted_errors?.[key];
+                  const own = explain?.member_values?.[key];
+                  return (
+                    <div key={key} className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-[var(--radius-md)]">
+                      <div className="flex justify-between text-scale-xs font-semibold mb-1">
+                        <span className="text-[var(--color-text-primary)] font-bold">
+                          {meta.name}
+                          <span className="ml-2 font-normal text-[var(--color-text-tertiary)]">
+                            predicted error Ê {predErr ?? '—'} °C · own forecast {own ?? '—'} °C
+                          </span>
+                        </span>
+                        <span className="font-data" style={{ color: meta.color }}>
+                          {weight ?? '—'}%
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-[var(--color-surface-muted)] rounded-full overflow-hidden border border-[var(--color-border)]">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${weight || 0}%`, backgroundColor: meta.color }}
+                        />
+                      </div>
                     </div>
-                    <div className="w-full h-2 bg-[var(--color-surface-muted)] rounded-full overflow-hidden border border-[var(--color-border)]">
-                      <div className="h-full bg-red-600 rounded-full" style={{ width: `${factor.weight}%` }} />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
+
+            {explain?.model_metadata?.trained_at && (
+              <p className="text-[11px] font-data text-[var(--color-text-tertiary)] border-t border-[var(--color-border)] pt-4">
+                Meta-model trained {explain.model_metadata.trained_at} on{' '}
+                {explain.model_metadata.n_train_rows?.toLocaleString()} rows · features:{' '}
+                {explain.model_metadata.feature_names?.join(', ')}
+              </p>
+            )}
           </div>
         </div>
       </section>
 
-      {/* Footer matching THERMOS */}
+      {/* Footer */}
       <footer className="mt-auto border-t border-[var(--color-border)] py-8 px-6 md:px-16 bg-[var(--color-panel)] text-scale-xs text-[var(--color-text-secondary)] flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <span className="font-bold text-[var(--color-text-primary)]">VARUNA</span>
           <span>— Adaptive Weather Intelligence | SIH 2026 Project</span>
         </div>
-        <div className="font-data text-[11px] text-[var(--color-text-tertiary)]">
-          ECMWF IFS (9km) · ECMWF AIFS (0.25°) · NOAA GFS (13km) · Reanalysis Benchmark (IMD Integration Pending)
+        <div className="font-data text-[11px] text-[var(--color-text-tertiary)] text-center">
+          Data: Open-Meteo (CC BY 4.0), ECMWF, NOAA, DWD · Verification reference: ERA5 reanalysis, not station
+          observations · IMD AWS integration pending
         </div>
       </footer>
     </div>
