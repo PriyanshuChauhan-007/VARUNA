@@ -1,4 +1,3 @@
-"""GET /api/forecast - blended forecast timeline (LIVE / CACHED / REPLAY)."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
