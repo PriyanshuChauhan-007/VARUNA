@@ -1,5 +1,3 @@
-"""Null handling: 1 null, 2 nulls, all null - never converted to 0.0,
-weights recomputed over remaining members, degraded flag semantics."""
 from __future__ import annotations
 
 import pytest
@@ -16,18 +14,17 @@ def patched_live(monkeypatch):
 
 
 def test_one_null_member(client, patched_live, live_series):
-    # cep_gfs missing at hour 5 entirely
     for field in live_series["models"]["cep_gfs"]:
         live_series["models"]["cep_gfs"][field][5] = None
     patched_live(live_series)
     out = svc.forecast_payload("delhi_ncr", "temperature", None)
     entry = out["timeline"][5]
     assert entry["models"]["cep_gfs"] is None
-    assert entry["models"]["cep_gfs"] != 0.0  # null never becomes 0.0
+    assert entry["models"]["cep_gfs"] != 0.0
     assert set(entry["weights"].keys()) == {"ecmwf_ifs", "ecmwf_aifs", "dwd_icon"}
     assert sum(entry["weights"].values()) == 100
     assert entry["models_used"] == 3
-    assert entry["degraded"] is False  # >= 2 members remain
+    assert entry["degraded"] is False
 
 
 def test_two_null_members(client, patched_live, live_series):
@@ -51,7 +48,7 @@ def test_three_null_members_degraded(client, patched_live, live_series):
     out = svc.forecast_payload("delhi_ncr", "temperature", None)
     entry = out["timeline"][2]
     assert entry["models_used"] == 1
-    assert entry["degraded"] is True  # fewer than 2 remain
+    assert entry["degraded"] is True
     assert sum(entry["weights"].values()) == 100
     assert entry["blend"] is not None
 
