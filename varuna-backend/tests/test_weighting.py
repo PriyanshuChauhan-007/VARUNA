@@ -1,4 +1,3 @@
-"""Hamilton-Hare apportionment + blend invariants (Phase 3)."""
 import pytest
 
 from app.science.weighting import (
@@ -42,13 +41,12 @@ def test_hamilton_hare_extreme_skew_no_negatives():
 def test_weights_from_predicted_errors_inverse_square():
     w = weights_from_predicted_errors({"m1": 1.0, "m2": 2.0})
     assert sum(w.values()) == 100
-    # 1/1^2 : 1/2^2 = 4:1 -> m1 should get ~80, m2 ~20
     assert w["m1"] > w["m2"]
 
 
 def test_weights_floor_epsilon():
     w = weights_from_predicted_errors({"m1": 0.0, "m2": 1e-12})
-    assert sum(w.values()) == 100  # no divide-by-zero, no negatives
+    assert sum(w.values()) == 100
 
 
 def test_static_inverse_rmse_weights():
@@ -61,7 +59,6 @@ def test_blend_value_skips_none_without_zero_fill():
     vals = {"a": 10.0, "b": None, "c": 20.0}
     w = hamilton_hare({"a": 1.0, "c": 1.0})
     blend = blend_value(vals, w)
-    # 100% a+ c -> 50/50 of 10 and 20 (b contributed nothing, not 0.0)
     assert blend == pytest.approx(15.0)
 
 
