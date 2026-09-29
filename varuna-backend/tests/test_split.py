@@ -1,4 +1,3 @@
-"""Chronological split invariants (Section 2.6)."""
 import pandas as pd
 
 from app.science.alignment import ALIGNED_COLUMNS, split_partitions
