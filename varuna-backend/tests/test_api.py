@@ -1,8 +1,3 @@
-"""API contract tests for every endpoint, plus the resilience chain:
-LIVE -> CACHED -> REPLAY -> clean 503 (never a raw 502).
-
-No test touches the real network: provider calls are monkeypatched.
-"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -37,9 +32,6 @@ def _no_probe(monkeypatch):
     )
 
 
-# ---------------------------------------------------------------------------
-# static endpoints
-# ---------------------------------------------------------------------------
 def test_health(client):
     r = client.get("/api/health")
     assert r.status_code == 200
@@ -82,9 +74,6 @@ def test_providers_status_reports_artifacts(client, monkeypatch):
     assert body["provenance"]["split_rule"]
 
 
-# ---------------------------------------------------------------------------
-# forecast
-# ---------------------------------------------------------------------------
 def test_forecast_live_contract(client, patched_live, live_series):
     patched_live(live_series)
     body = client.get("/api/forecast?region=delhi_ncr&variable=temperature").json()
@@ -123,9 +112,6 @@ def test_forecast_unknown_region_is_503_not_502(client):
     assert r.json()["available"] is False
 
 
-# ---------------------------------------------------------------------------
-# weights
-# ---------------------------------------------------------------------------
 def test_weights_real_regime_and_sum_100(client, patched_live, live_series):
     patched_live(live_series)
     body = client.get(
@@ -140,10 +126,8 @@ def test_weights_real_regime_and_sum_100(client, patched_live, live_series):
 
 
 def test_weights_differ_between_regions(client, monkeypatch):
-    """Real region features (lat/lon/regime/lead) must change the weights."""
     def series_for(lat: float, lon: float, **kw):
         s = make_live_series()
-        # region-dependent meteorology: colder over the Ghats, hotter inland
         offset = -6.0 if lat < 20 else 0.0
         for key in MODEL_KEYS:
             s["models"][key]["temperature"] = [
@@ -168,9 +152,6 @@ def test_weights_unvalidated_variable_declares_equal_fallback(client, patched_li
     assert sum(body["weights"].values()) == 100
 
 
-# ---------------------------------------------------------------------------
-# explain
-# ---------------------------------------------------------------------------
 def test_explain_returns_real_feature_importances(client, patched_live, live_series):
     patched_live(live_series)
     body = client.get(
@@ -184,9 +165,6 @@ def test_explain_returns_real_feature_importances(client, patched_live, live_ser
     assert body["model_metadata"]["xgb_params"]["max_depth"] == 4
 
 
-# ---------------------------------------------------------------------------
-# extremes
-# ---------------------------------------------------------------------------
 def test_extremes_endpoint_shape(client, patched_live, live_series):
     patched_live(live_series)
     body = client.get("/api/extremes?region=delhi_ncr&lead_time_hours=48").json()
@@ -196,9 +174,6 @@ def test_extremes_endpoint_shape(client, patched_live, live_series):
     assert body["note"]
 
 
-# ---------------------------------------------------------------------------
-# resilience: LIVE -> CACHED -> REPLAY -> 503
-# ---------------------------------------------------------------------------
 def test_cached_mode_is_echoed(client, patched_live, live_series):
     patched_live(live_series, mode="CACHED")
     body = client.get("/api/forecast?region=delhi_ncr&variable=temperature").json()
@@ -206,7 +181,6 @@ def test_cached_mode_is_echoed(client, patched_live, live_series):
 
 
 def test_replay_when_provider_down(client, provider_down, patched_live):
-    # provider unreachable -> archived post-monsoon timeline, declared REPLAY
     body = client.get(
         "/api/forecast?region=delhi_ncr&variable=temperature&lead_time_hours=48").json()
     assert body["data_mode"] == "REPLAY"
@@ -227,7 +201,7 @@ def test_replay_rejects_non_temperature_honestly(client, provider_down):
 def test_clean_503_when_live_cache_and_replay_all_fail(client, provider_down):
     r = client.get(
         "/api/forecast?region=punjab_agri&variable=temperature&lead_time_hours=48")
-    assert r.status_code == 503  # never a raw 502
+    assert r.status_code == 503
     body = r.json()
     assert body["available"] is False
     assert "unavailable" in body["detail"].lower()
