@@ -1,18 +1,3 @@
-"""Open-Meteo provider: live forecasts, previous-runs, ERA5 archive.
-
-Network policy
---------------
-* httpx with retry + exponential backoff (3 attempts).
-* SQLite cache: 30-min TTL for live forecasts, permanent for archive data.
-* Honest data_mode: this module only ever returns "LIVE" (fresh network
-  fetch) or "CACHED" (served from SQLite). "REPLAY" is decided by the
-  service layer when neither network nor cache is available.
-* Nulls are never converted to 0.0 - missing values stay None.
-
-Model ids verified against the official Open-Meteo documentation:
-  ecmwf_ifs025, ecmwf_aifs025_single (NOT the bare ecmwf_aifs025, which
-  returns HTTP 200 with all nulls), gfs_seamless, icon_seamless.
-"""
 from __future__ import annotations
 
 import time
@@ -33,12 +18,11 @@ from ..config import (
 )
 from .cache import CACHE
 
-# reverse map: open-meteo slug -> our model key
 SLUG_TO_KEY = {slug: key for key, slug in MODEL_IDS.items()}
 
 
 class ProviderError(RuntimeError):
-    """Raised when a provider is unreachable and no cache entry exists."""
+    pass
 
 
 def _http_get_json(url: str, params: dict[str, Any]) -> dict:
@@ -53,7 +37,7 @@ def _http_get_json(url: str, params: dict[str, Any]) -> dict:
                 if data.get("error"):
                     raise ProviderError(f"Open-Meteo error: {data.get('reason')}")
                 return data
-        except Exception as exc:  # noqa: BLE001 - retry on any transport error
+        except Exception as exc:
             last_exc = exc
             if attempt < HTTP_RETRIES - 1:
                 time.sleep(delay)
@@ -62,32 +46,22 @@ def _http_get_json(url: str, params: dict[str, Any]) -> dict:
 
 
 def _hourly_keys(payload: dict) -> dict[str, str]:
-    """Map 'temperature_2m_previous_day1_ecmwf_ifs025' -> ('temperature_2m_previous_day1','ecmwf_ifs025')."""
     return {k: k for k in (payload.get("hourly") or {}).keys() if k != "time"}
 
 
 def _split_key(key: str) -> tuple[str, str | None]:
-    """Split an hourly response key into (field, model_slug|None)."""
     for slug in SLUG_TO_KEY:
         if key.endswith("_" + slug):
             return key[: -(len(slug) + 1)], slug
     return key, None
 
 
-# ---------------------------------------------------------------------------
-# Live forecasts (4 models, hourly, up to 168 h)
-# ---------------------------------------------------------------------------
 def get_live_forecast(
     lat: float,
     lon: float,
     variables: list[str] | None = None,
     forecast_days: int = 7,
 ) -> tuple[dict, str]:
-    """Return ({time, elevation, models: {key: {var: [v]}}, 'LIVE'|'CACHED'}).
-
-    All 4 models are fetched in a single batched request.
-    Raises ProviderError when network and cache are both unavailable.
-    """
     forecast_days = max(1, min(forecast_days, FORECAST_HORIZON_CAP_H // 24))
     variables = variables or VARIABLE_KEYS
     hourly = ",".join(VARIABLES[v]["openmeteo"] for v in variables)
@@ -146,9 +120,6 @@ def _reverse_var(openmeteo_name: str) -> str | None:
     return None
 
 
-# ---------------------------------------------------------------------------
-# Previous-runs forecasts (archived runs at fixed leads)
-# ---------------------------------------------------------------------------
 def get_previous_runs(
     lat: float,
     lon: float,
@@ -157,12 +128,6 @@ def get_previous_runs(
     leads: list[int],
     variables: list[str] | None = None,
 ) -> dict:
-    """Forecasts for fixed lead times from archived runs.
-
-    Returns {time, elevation_m, models: {key: {"<var>_previous_dayN": [v]}}}.
-    Lead 24/48/72/120 h == previous_day1/2/3/5.
-    Permanent-cached (archive kind). Raises ProviderError on failure.
-    """
     from ..config import LEAD_TO_PREVIOUS_DAY
 
     variables = variables or VARIABLE_KEYS
@@ -212,9 +177,6 @@ def get_previous_runs(
     return result
 
 
-# ---------------------------------------------------------------------------
-# ERA5 reanalysis reference (verification reference - NOT ground truth)
-# ---------------------------------------------------------------------------
 def get_era5(
     lat: float,
     lon: float,
@@ -222,7 +184,6 @@ def get_era5(
     end_date: str,
     variables: list[str] | None = None,
 ) -> dict:
-    """ERA5 reference series. Permanent-cached. Raises ProviderError on failure."""
     variables = variables or VARIABLE_KEYS
     hourly = ",".join(VARIABLES[v]["openmeteo"] for v in variables)
     cache_key = f"era5|{lat:.4f}|{lon:.4f}|{start_date}|{end_date}|{hourly}"
@@ -260,9 +221,6 @@ def get_era5(
     return result
 
 
-# ---------------------------------------------------------------------------
-# Health probe (used by /api/providers/status)
-# ---------------------------------------------------------------------------
 def probe_provider(url: str, params: dict | None = None) -> dict:
     started = time.perf_counter()
     try:
@@ -272,7 +230,7 @@ def probe_provider(url: str, params: dict | None = None) -> dict:
             latency_ms = round((time.perf_counter() - started) * 1000, 1)
             return {"reachable": resp.status_code == 200, "http_status": resp.status_code,
                     "latency_ms": latency_ms, "checked_at": time.time()}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         latency_ms = round((time.perf_counter() - started) * 1000, 1)
         return {"reachable": False, "http_status": None, "latency_ms": latency_ms,
                 "error": str(exc)[:200], "checked_at": time.time()}
