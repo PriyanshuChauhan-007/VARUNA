@@ -1,5 +1,3 @@
-"""GET /api/weights - real provider values -> real regime -> predicted errors
--> integer weights summing to 100. Never hardcoded."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
