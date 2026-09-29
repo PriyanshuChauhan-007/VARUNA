@@ -1,19 +1,3 @@
-"""Shared blend service used by every API route.
-
-Fallback chain (Section: API resilience):
-    LIVE  -> fresh network fetch from Open-Meteo
-    CACHED-> stale SQLite cache when the network fails
-    REPLAY-> data/replay/timelines.json when neither is available
-    503   -> clean JSON error otherwise (never a raw 502)
-
-Honesty rules enforced here:
-* data_mode is computed, never hardcoded.
-* Null member values are never turned into 0.0; weights are apportioned over
-  the remaining members; degraded=True when fewer than 2 members remain.
-* Non-temperature variables have no trained meta-model until Phase 4: they
-  are served with equal weights and weighting_scheme="equal_fallback_untrained",
-  validated=False. This is declared, never presented as adaptive skill.
-"""
 from __future__ import annotations
 
 import json
@@ -54,16 +38,12 @@ MODE_REPLAY = "REPLAY"
 
 
 class ServiceUnavailable(RuntimeError):
-    """Raised when live, cache and replay are all unavailable -> HTTP 503."""
 
     def __init__(self, message: str, mode_tried: list[str] | None = None):
         super().__init__(message)
         self.mode_tried = mode_tried or []
 
 
-# ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
 _bundle_cache: dict | None = None
 
 
@@ -114,12 +94,11 @@ def _weights_for(
     member_values: dict[str, float | None],
     bundle: dict | None,
 ) -> tuple[dict[str, int], str, dict[str, float] | None, str | None]:
-    """Return (weights, scheme, predicted_errors|None, reason|None)."""
     available = {k: v for k, v in member_values.items() if v is not None}
     if not available:
         return {}, "none", None, "no_model_values_available"
     if bundle is not None and variable == "temperature" and bundle.get("variable") == "temperature":
-        own = member_values  # own forecast differs per model -> per-model features
+        own = member_values
         preds: dict[str, float] = {}
         for key in available:
             f = dict(feats)
@@ -127,8 +106,6 @@ def _weights_for(
             preds[key] = predict_errors_single_row(bundle, f)[key]
         weights = weights_from_predicted_errors(preds)
         return weights, "adaptive_xgboost", preds, None
-    # No trained meta-model for this variable (until Phase 4): explicit equal
-    # fallback - declared, never shown as adaptive skill.
     weights = weights_from_predicted_errors({k: 1.0 for k in available})
     return weights, "equal_fallback_untrained", None, (
         "No meta-model trained for this variable yet; equal weights are used "
@@ -145,9 +122,6 @@ def _load_replay() -> dict:
         return {"timelines": {}}
 
 
-# ---------------------------------------------------------------------------
-# data acquisition with fallback
-# ---------------------------------------------------------------------------
 def _acquire_live(region_id: str) -> tuple[dict, str]:
     region = REGIONS[region_id]
     tried: list[str] = []
@@ -156,8 +130,6 @@ def _acquire_live(region_id: str) -> tuple[dict, str]:
         return series, mode
     except ProviderError as exc:
         tried.append(f"live:{exc}")
-    # stale cache is handled inside get_live_forecast (CACHED); if we are here
-    # both fresh and stale cache missed -> replay
     replay = _load_replay()
     if region_id in replay.get("timelines", {}):
         return {"__replay__": replay}, MODE_REPLAY
@@ -181,15 +153,10 @@ def _replay_timeline(region_id: str, lead: int) -> tuple[dict, str]:
     return {"__replay_timeline__": tl, "__replay_meta__": replay}, MODE_REPLAY
 
 
-# ---------------------------------------------------------------------------
-# timeline construction
-# ---------------------------------------------------------------------------
 def _live_timeline(region_id: str, variable: str) -> dict:
     region = REGIONS[region_id]
     series, data_mode = _acquire_live(region_id)
     if data_mode == MODE_REPLAY:
-        # replay path without a requested lead: use the 24 h timeline as the
-        # canonical horizon sample
         payload, mode = _replay_timeline(region_id, 48)
         return _replay_timeline_entries(region_id, variable, 48, payload, mode)
 
@@ -198,11 +165,9 @@ def _live_timeline(region_id: str, variable: str) -> dict:
     elevation = series.get("elevation_m")
     bundle = _bundle()
 
-    # --- pass 1: assemble per-hour context (members, ensemble, regime) ------
     rows: list[dict] = []
     last_regime = {"index": None, "name": None}
 
-    # index of first timestamp >= now
     start = 0
     for i, t in enumerate(times):
         dt = datetime.fromisoformat(t.replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
@@ -247,7 +212,6 @@ def _live_timeline(region_id: str, variable: str) -> dict:
     if not rows:
         raise ServiceUnavailable("Live forecast returned no usable future hours.", ["live"])
 
-    # --- pass 2: one batched meta-model call, then weights per hour --------
     shared_rows: list[dict[str, float]] = []
     own: dict[str, list[float]] = {k: [] for k in MODEL_KEYS}
     for r in rows:
@@ -256,7 +220,7 @@ def _live_timeline(region_id: str, variable: str) -> dict:
             region, dt, r["lead"], r["regime_index"], r["ens_mean"],
             r["ens_spread"], 0.0, elevation,
         )
-        shared.pop("model_own_forecast", None)  # added per model below
+        shared.pop("model_own_forecast", None)
         shared_rows.append(shared)
         for key in MODEL_KEYS:
             v = r["member_values"][key]
@@ -288,7 +252,6 @@ def _live_timeline(region_id: str, variable: str) -> dict:
         if not available:
             weights, scheme, preds, reason = {}, "none", None, "no_model_values_available"
         elif preds_rows is not None:
-            # never assign weight to a model that returned null this hour
             preds = {k: v for k, v in preds_rows[i].items() if k in available}
             weights = weights_from_predicted_errors(preds)
             scheme, reason = "adaptive_xgboost", None
@@ -404,16 +367,12 @@ def _num(v):
     return f
 
 
-# ---------------------------------------------------------------------------
-# public service functions
-# ---------------------------------------------------------------------------
 def forecast_payload(region_id: str, variable: str, lead_time_hours: int | None) -> dict:
     if region_id not in REGIONS:
         raise ServiceUnavailable(f"Unknown region '{region_id}'.")
     if variable not in VARIABLES:
         raise ServiceUnavailable(f"Unknown variable '{variable}'.")
     if lead_time_hours is not None and lead_time_hours > FORECAST_HORIZON_CAP_H:
-        # capped, with explanatory note (never a silent 30-day claim)
         payload = _live_timeline(region_id, variable)
         payload["horizon_note"] = (
             f"Requested lead {lead_time_hours} h exceeds the {FORECAST_HORIZON_CAP_H} h "
@@ -422,9 +381,6 @@ def forecast_payload(region_id: str, variable: str, lead_time_hours: int | None)
         payload["requested_lead_time_hours"] = lead_time_hours
         return payload
 
-    # REPLAY preference: when live fails and a replay exists for the requested
-    # lead, serve that fixed-lead timeline; otherwise the generic path handles
-    # replay internally.
     if lead_time_hours in LEAD_TIMES:
         region = REGIONS[region_id]
         try:
@@ -451,7 +407,6 @@ def weights_payload(region_id: str, variable: str, lead_time_hours: int) -> dict
     try:
         series, data_mode = get_live_forecast(region["lat"], region["lon"])
         times = series["time"]
-        # first timestamp at or beyond now + lead
         target = _now_hour()
         idx = None
         for i, t in enumerate(times):
@@ -472,7 +427,6 @@ def weights_payload(region_id: str, variable: str, lead_time_hours: int) -> dict
         elevation = series.get("elevation_m")
         ts = datetime.fromisoformat(times[idx].replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
     except ProviderError:
-        # replay fallback for the requested lead
         payload, data_mode = _replay_timeline(region_id, lead_time_hours)
         tl = payload["__replay_timeline__"]
         i = len(tl["times"]) // 2
@@ -481,7 +435,7 @@ def weights_payload(region_id: str, variable: str, lead_time_hours: int) -> dict
         elevation = tl.get("elevation_m")
         regime_index = tl["regime_index"][i]
         regime_name = tl["regime"][i]
-        def _ctx(v: str) -> float | None:  # replay archive has temp as context only
+        def _ctx(v: str) -> float | None:
             return None
         ens_mean, ens_spread = ensemble_stats(member_values)
         feats = _features(region, ts, lead_time_hours, regime_index, ens_mean, ens_spread,
@@ -559,7 +513,7 @@ def extremes_payload(region_id: str, lead_time_hours: int, simulate: bool = Fals
                      "rainfall": [rains["timeline"][j]["blend"] for j in range(lo, idx + 1)]}
 
     idx, win = _window([temps, winds, rains], lead_time_hours)
-    valid = lambda vals: [v for v in vals if v is not None]  # noqa: E731
+    valid = lambda vals: [v for v in vals if v is not None]
 
     rain24 = sum(valid(win["rainfall"]))
     temp_max = max(valid(win["temperature"])) if valid(win["temperature"]) else None
@@ -579,8 +533,6 @@ def extremes_payload(region_id: str, lead_time_hours: int, simulate: bool = Fals
         if crossed:
             alerts.append(dict(check))
 
-    # Severity upgrades are decided BEFORE the check is registered, so the
-    # copy pushed into `alerts` carries the same threshold as `checks`.
     very_heavy = rain24 >= TH["very_heavy_rain_mm_24h"]
     gale = wind_max is not None and wind_max >= TH["wind_gale_kmh"]
 
