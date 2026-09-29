@@ -1,24 +1,3 @@
-"""
-VARUNA backend configuration.
-
-All canonical constants live here:
-  * 12 regions (6 benchmarked / validated, 6 live-only)
-  * 4 forecast model ids (Open-Meteo)
-  * 4 variables + units + validated flag
-  * lead times (capped at 168 h)
-  * benchmark windows (2026)
-  * chronological split fractions
-  * extreme-weather thresholds (IMD)
-  * meta-model hyper-parameters (exact science spec)
-
-Region coordinates: taken from the frontend (src/data/mockData.js) where the
-frontend defines them; these are therefore the canonical values. For three
-regions (gujarat_industrial, odisha_coast, rajasthan_thar) the frontend value
-differs from the fallback coordinate in the master prompt - the frontend wins.
-The rule and its consequences are documented in docs/DATA_PROVENANCE.md; the
-prompt's numbers are not restated there because the prompt is not a file in
-this repository.
-"""
 from __future__ import annotations
 
 import os
@@ -44,10 +23,6 @@ BLEND_TEST_CSV = REPORTS_DIR / "blend_test_results.csv"
 
 APP_VERSION = "1.0.0"
 
-# ---------------------------------------------------------------------------
-# Regions
-# ---------------------------------------------------------------------------
-# validated=True  -> one of the 6 benchmarked regions (held-out skill exists)
 BENCHMARKED_REGIONS = {
     "delhi_ncr",
     "mumbai_coastal",
@@ -113,10 +88,6 @@ for _rid, _r in REGIONS.items():
     _r["validated"] = _rid in BENCHMARKED_REGIONS
     _r["benchmarked"] = _rid in BENCHMARKED_REGIONS
 
-# ---------------------------------------------------------------------------
-# Forecast models (Open-Meteo model ids verified against official docs)
-# ---------------------------------------------------------------------------
-# NEVER use the bare "ecmwf_aifs025": HTTP 200 with all-null values.
 MODEL_IDS: dict[str, str] = {
     "ecmwf_ifs": "ecmwf_ifs025",
     "ecmwf_aifs": "ecmwf_aifs025_single",
@@ -131,12 +102,6 @@ MODEL_NAMES: dict[str, str] = {
     "dwd_icon": "DWD ICON",
 }
 
-# ---------------------------------------------------------------------------
-# Variables
-# ---------------------------------------------------------------------------
-# temperature is the only variable trained and validated by default; the
-# others are served live but flagged validated=false (Phase 4 may change this
-# only if its held-out table proves skill).
 VARIABLES: dict[str, dict] = {
     "temperature": {"openmeteo": "temperature_2m", "unit": "\u00b0C", "validated": True},
     "rainfall": {"openmeteo": "precipitation", "unit": "mm", "validated": False},
@@ -145,17 +110,12 @@ VARIABLES: dict[str, dict] = {
 }
 VARIABLE_KEYS: list[str] = list(VARIABLES.keys())
 
-# ---------------------------------------------------------------------------
-# Lead times
-# ---------------------------------------------------------------------------
 LEAD_TIMES: list[int] = [24, 48, 72, 120]
-FORECAST_HORIZON_CAP_H = 168  # 7 days
+FORECAST_HORIZON_CAP_H = 168
 HORIZON_NOTE = (
     "Forecast horizon is capped at 168 h (7 days). "
     "Longer horizons are not supported by this system."
 )
-# previous-runs API field suffixes: previous_dayN = forecast issued N*24 h
-# before valid time, so lead 24/48/72/120 h == previous_day1/2/3/5.
 LEAD_TO_PREVIOUS_DAY: dict[int, str] = {
     24: "previous_day1",
     48: "previous_day2",
@@ -163,9 +123,6 @@ LEAD_TO_PREVIOUS_DAY: dict[int, str] = {
     120: "previous_day5",
 }
 
-# ---------------------------------------------------------------------------
-# Benchmark windows (2026)
-# ---------------------------------------------------------------------------
 BENCHMARK_WINDOWS: dict[str, tuple[str, str]] = {
     "winter": ("2026-01-10", "2026-01-17"),
     "pre_monsoon": ("2026-04-10", "2026-04-17"),
@@ -174,16 +131,10 @@ BENCHMARK_WINDOWS: dict[str, tuple[str, str]] = {
 }
 BENCHMARK_REGION_IDS: list[str] = sorted(BENCHMARKED_REGIONS)
 
-# ---------------------------------------------------------------------------
-# Chronological split (Section 2.6): by UNIQUE TIMESTAMP, no shuffle
-# ---------------------------------------------------------------------------
 SPLIT_TRAIN = 0.65
 SPLIT_VAL = 0.15
 SPLIT_TEST = 0.20
 
-# ---------------------------------------------------------------------------
-# Meta-model hyper-parameters (science spec - do not change silently)
-# ---------------------------------------------------------------------------
 XGB_PARAMS = {
     "n_estimators": 80,
     "max_depth": 4,
@@ -194,7 +145,6 @@ XGB_PARAMS = {
     "n_jobs": -1,
     "random_state": 42,
 }
-# 11 features, in fixed order
 FEATURE_NAMES: list[str] = [
     "latitude",
     "longitude",
@@ -208,11 +158,8 @@ FEATURE_NAMES: list[str] = [
     "ensemble_spread",
     "model_own_forecast",
 ]
-WEIGHT_EPSILON = 1e-6  # floor for predicted error before 1/E^2
+WEIGHT_EPSILON = 1e-6
 
-# ---------------------------------------------------------------------------
-# Extreme-weather thresholds (IMD classification, used only when crossed)
-# ---------------------------------------------------------------------------
 EXTREME_THRESHOLDS = {
     "heavy_rain_mm_24h": 64.5,
     "very_heavy_rain_mm_24h": 115.6,
@@ -221,9 +168,6 @@ EXTREME_THRESHOLDS = {
     "wind_gale_kmh": 62.0,
 }
 
-# ---------------------------------------------------------------------------
-# Regime classes - fixed index order (Section 1.7)
-# ---------------------------------------------------------------------------
 REGIME_CLASSES: list[str] = [
     "Monsoonal Active Surge",
     "Monsoonal Break",
@@ -233,9 +177,6 @@ REGIME_CLASSES: list[str] = [
     "Post-Monsoon Depression",
 ]
 
-# ---------------------------------------------------------------------------
-# Providers
-# ---------------------------------------------------------------------------
 FORECAST_API = os.environ.get("VARUNA_FORECAST_API", "https://api.open-meteo.com/v1/forecast")
 PREVIOUS_RUNS_API = os.environ.get(
     "VARUNA_PREVIOUS_RUNS_API", "https://previous-runs-api.open-meteo.com/v1/forecast"
@@ -244,14 +185,13 @@ ARCHIVE_API = os.environ.get("VARUNA_ARCHIVE_API", "https://archive-api.open-met
 
 HTTP_TIMEOUT_S = float(os.environ.get("VARUNA_HTTP_TIMEOUT_S", "30"))
 HTTP_RETRIES = 3
-CACHE_TTL_LIVE_S = 30 * 60  # 30 minutes for live forecasts
+CACHE_TTL_LIVE_S = 30 * 60
 
 CORS_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
 
-# Attribution strings
 ATTRIBUTION = (
     "Data: Open-Meteo (CC BY 4.0), ECMWF, NOAA, DWD. "
     "Verification reference: ERA5 reanalysis, not station observations."
