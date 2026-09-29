@@ -1,4 +1,3 @@
-"""GET /api/explain - real XGBoost feature importances + current weights."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
