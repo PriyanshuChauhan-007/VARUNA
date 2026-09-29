@@ -1,11 +1,3 @@
-"""Extreme-weather checks: alerts fire ONLY on a real threshold crossing.
-
-IMD thresholds used by the service:
-    heavy rain    64.5 mm / 24 h
-    very heavy   115.6 mm / 24 h
-    heatwave      45.0 C
-    squall        55 km/h, gale 62 km/h
-"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -19,7 +11,6 @@ from app.config import EXTREME_THRESHOLDS
 def make_constant_series(temperature: float, rainfall: float,
                          wind_speed: float, pressure: float,
                          n_hours: int = 96) -> dict:
-    """Deterministic flat forecast (test fixture only - never real data)."""
     start = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
     times = [(start + timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M") for i in range(n_hours)]
     fields = {
@@ -47,7 +38,6 @@ def _alerts(payload: dict) -> dict:
 
 
 def test_no_alerts_when_nothing_crossed(patch_series):
-    # ~12 mm / 24 h, 30 C, 20 km/h - all well below thresholds
     patch_series(make_constant_series(30.0, 0.5, 20.0, 1006.0))
     out = svc.extremes_payload("delhi_ncr", 48)
     assert out["status"] == "no_alerts"
@@ -58,13 +48,13 @@ def test_no_alerts_when_nothing_crossed(patch_series):
 
 
 def test_heavy_rain_alert_only_above_64_5(patch_series):
-    patch_series(make_constant_series(30.0, 2.6, 20.0, 1006.0))  # 62.4 mm/24h
+    patch_series(make_constant_series(30.0, 2.6, 20.0, 1006.0))
     out = svc.extremes_payload("delhi_ncr", 48)
     rain = _alerts(out)
     assert "heavy_rain" not in rain
     assert out["checks"][0]["value"] < EXTREME_THRESHOLDS["heavy_rain_mm_24h"]
 
-    patch_series(make_constant_series(30.0, 2.7, 20.0, 1006.0))  # 64.8 mm/24h
+    patch_series(make_constant_series(30.0, 2.7, 20.0, 1006.0))
     out = svc.extremes_payload("delhi_ncr", 48)
     rain = _alerts(out)
     assert "heavy_rain" in rain
@@ -74,7 +64,7 @@ def test_heavy_rain_alert_only_above_64_5(patch_series):
 
 
 def test_very_heavy_rain_severity_upgrade(patch_series):
-    patch_series(make_constant_series(30.0, 5.0, 20.0, 1006.0))  # 120 mm/24h
+    patch_series(make_constant_series(30.0, 5.0, 20.0, 1006.0))
     out = svc.extremes_payload("delhi_ncr", 48)
     rain = _alerts(out)["heavy_rain"]
     assert rain["severity"] == "very_heavy"
@@ -91,7 +81,7 @@ def test_heatwave_alert_only_at_or_above_45(patch_series):
     heat = _alerts(out)["heatwave"]
     assert heat["value"] == 45.0
     assert heat["threshold"] == EXTREME_THRESHOLDS["heatwave_c"]
-    assert heat["validated"] is True  # temperature is the validated variable
+    assert heat["validated"] is True
 
 
 def test_wind_thresholds_squall_then_gale(patch_series):
@@ -114,7 +104,6 @@ def test_every_alert_is_backed_by_a_crossed_check(patch_series):
     assert out["status"] == "alerts"
     crossed = {c["hazard"] for c in out["checks"] if c["crossed"]}
     assert {a["hazard"] for a in out["alerts"]} == crossed
-    # rainfall/wind skill is unvalidated - flagged as such
     validated = out["validated"]
     assert validated["temperature"] is True
     assert validated["rainfall"] is False
