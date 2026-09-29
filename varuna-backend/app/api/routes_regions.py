@@ -1,4 +1,3 @@
-"""GET /api/regions - the 12 canonical regions with validated flags."""
 from __future__ import annotations
 
 from fastapi import APIRouter
