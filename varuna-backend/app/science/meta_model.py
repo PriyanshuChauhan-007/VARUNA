@@ -1,11 +1,3 @@
-"""XGBoost meta-model: one XGBRegressor per forecast model.
-
-For every model m the regressor predicts EXPECTED ABSOLUTE ERROR
-    target_m = | forecast_m - ERA5 |
-from the fixed 11-feature schema (Section 1.4). It predicts error, not
-weather. ERA5 is used only as the training target and never as a
-forecast-time feature.
-"""
 from __future__ import annotations
 
 import time
@@ -29,14 +21,6 @@ TRAIN_VERSION = "1.0"
 
 
 def build_feature_frame(df: pd.DataFrame, model_key: str | None = None) -> pd.DataFrame:
-    """Return the 11-column feature matrix in canonical order.
-
-    10 of the features are shared across models. ``model_own_forecast`` is
-    MODEL-DEPENDENT: for model m it is m's own forecast value. When the frame
-    already carries ``model_own_forecast`` (single-row inference, where the
-    caller sets it per model) it is used as-is; otherwise it is taken from the
-    ``<model_key>_val`` column of the aligned table.
-    """
     frame = df
     if "model_own_forecast" not in frame.columns:
         if model_key is None:
@@ -59,10 +43,6 @@ def train_meta_model(
     variable: str = "temperature",
     validation_df: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
-    """Train one XGBRegressor per model on the TRAIN partition.
-
-    Returns the bundle: {models, feature_names, variable, metadata}.
-    """
     bundle: dict[str, Any] = {
         "feature_names": list(FEATURE_NAMES),
         "variable": variable,
@@ -101,11 +81,6 @@ def train_meta_model(
 
 
 def predict_errors(bundle: dict[str, Any], X: pd.DataFrame) -> dict[str, pd.Series]:
-    """Predicted expected error per model for each row of X.
-
-    ``model_own_forecast`` is set per model (each regressor saw its own
-    forecast as its 11th feature during training).
-    """
     out: dict[str, pd.Series] = {}
     for key, model in bundle["models"].items():
         frame = build_feature_frame(X, model_key=key)
@@ -127,12 +102,6 @@ def predict_errors_rows(
     shared_rows: list[dict[str, float]],
     own: dict[str, list[float]],
 ) -> list[dict[str, float]]:
-    """Batch prediction for many rows at once (one predict() call per model).
-
-    ``shared_rows`` holds the 10 shared features per row (no
-    ``model_own_forecast``); ``own[key]`` holds model ``key``'s own forecast
-    for each row. Returns one {model: predicted_error} dict per row.
-    """
     n = len(shared_rows)
     if n == 0:
         return []
@@ -170,8 +139,6 @@ def load_bundle(path: Path = META_MODEL_PATH) -> dict[str, Any] | None:
 
 
 def feature_importances(bundle: dict[str, Any]) -> list[dict]:
-    """Mean gain-based importance across the 4 regressors (real
-    XGBRegressor.feature_importances_, averaged over models)."""
     rows: dict[str, float] = {name: 0.0 for name in bundle["feature_names"]}
     n = 0
     for model in bundle["models"].values():
