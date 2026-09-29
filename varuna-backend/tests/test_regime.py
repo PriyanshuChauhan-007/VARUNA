@@ -1,4 +1,3 @@
-"""Regime classifier: deterministic, total, and matching the documented rules."""
 from app.config import REGIME_CLASSES
 from app.science.regime import classify_regime
 
