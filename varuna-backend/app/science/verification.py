@@ -1,10 +1,3 @@
-"""Forecast verification metrics: RMSE, MAE, bias, Pearson r.
-
-ERA5 is a reanalysis REFERENCE dataset - never called ground truth, never
-station observations. Pairs where either side is None are dropped (no
-fabricated fill). Skill payloads produced from these functions must carry an
-explicit scope: 'held_out_test' or 'full_dataset_all_splits'.
-"""
 from __future__ import annotations
 
 import math
