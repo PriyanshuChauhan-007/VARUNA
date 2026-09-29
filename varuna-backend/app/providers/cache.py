@@ -1,4 +1,3 @@
-"""SQLite cache for provider responses (stdlib sqlite3, no ORM)."""
 from __future__ import annotations
 
 import json
@@ -42,12 +41,6 @@ class ResponseCache:
         self.conn.commit()
 
     def get(self, key: str, kind: str = "live", ttl_s: float | None = None) -> Any | None:
-        """Return payload if present and fresh enough for its kind.
-
-        kind='live'   -> subject to TTL (default 30 min); stale entries are
-                         still returned by get_stale() for CACHED mode.
-        kind='archive'-> permanent (no TTL).
-        """
         row = self.conn.execute(
             "SELECT payload, fetched_at FROM cache WHERE key=?", (key,)
         ).fetchone()
@@ -72,5 +65,4 @@ class ResponseCache:
             self._conn = None
 
 
-# process-wide singleton
 CACHE = ResponseCache()
