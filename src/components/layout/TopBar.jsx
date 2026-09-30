@@ -1,13 +1,13 @@
 import { Link } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
+import { DataModeBadge } from '../shared/Badges';
 
 export default function TopBar() {
   const searchQuery = useStore((s) => s.filters.searchQuery);
   const setFilter = useStore((s) => s.setFilter);
   const theme = useStore((s) => s.theme);
   const toggleTheme = useStore((s) => s.toggleTheme);
-  const effectiveMode = useStore((s) => s.effectiveMode);
-  const syncStatus = useStore((s) => s.syncStatus);
+  const dataMode = useStore((s) => s.dataMode);
 
   return (
     <header className="flex items-center justify-between h-16 px-4 md:px-6 bg-[var(--color-panel)] border-b border-[var(--color-border)] shrink-0 backdrop-blur-md z-30 transition-colors">
@@ -31,28 +31,9 @@ export default function TopBar() {
           </div>
         </Link>
 
-        {/* System operational mode indicator */}
+        {/* Data provenance indicator (reported by the backend per response) */}
         <div className="flex items-center gap-2 ml-3 pl-3 border-l border-[var(--color-border)]">
-          <span className="relative flex h-2 w-2">
-            <span
-              className={`inline-flex rounded-full h-2 w-2 ${
-                effectiveMode === 'LIVE'
-                  ? 'bg-emerald-500 animate-ping'
-                  : effectiveMode === 'REPLAY'
-                  ? 'bg-blue-500'
-                  : 'bg-amber-500'
-              }`}
-            />
-          </span>
-          <span className="text-scale-xs text-[var(--color-text-secondary)] font-data hidden xs:inline tabular-nums">
-            {effectiveMode === 'LIVE'
-              ? 'LIVE SYNC · 00Z'
-              : effectiveMode === 'REPLAY'
-              ? 'REPLAY MODE · 00Z ARCHIVE'
-              : syncStatus === 'FALLBACK_DEMO'
-              ? 'DEMO MODE · LIVE STANDBY'
-              : 'DEMO MODE · 00Z REF'}
-          </span>
+          <DataModeBadge mode={dataMode} />
         </div>
       </div>
 
@@ -75,7 +56,7 @@ export default function TopBar() {
           </svg>
           <input
             type="text"
-            placeholder="Search regions, zones, regimes..."
+            placeholder="Search regions, zones..."
             value={searchQuery}
             onChange={(e) => setFilter('searchQuery', e.target.value)}
             className="w-full h-9 pl-9 pr-3 text-scale-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-accent)] focus:ring-1 focus:ring-[var(--color-accent)] transition-colors"
@@ -85,7 +66,7 @@ export default function TopBar() {
 
       {/* Right: Technical Meta & Theme Toggle */}
       <div className="flex items-center gap-3 text-scale-xs text-[var(--color-text-secondary)] shrink-0">
-        <span className="font-data hidden sm:inline">IFS · AIFS · GFS</span>
+        <span className="font-data hidden sm:inline">IFS · AIFS · GFS · ICON</span>
         <div className="w-px h-4 bg-[var(--color-border)] hidden sm:block" />
         <span className="font-data font-semibold text-[var(--color-accent)] hidden sm:inline">SIH 2026</span>
         <div className="w-px h-4 bg-[var(--color-border)] hidden sm:block" />
@@ -119,7 +100,7 @@ export default function TopBar() {
         {/* Operational Disclaimer tooltip */}
         <span
           className="inline-flex items-center text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors cursor-help"
-          title="VARUNA Adaptive Weather Intelligence: Multi-model adaptive ensemble blending ECMWF IFS, AIFS, and NOAA GFS with contextual XGBoost error estimation and historical reference evaluation (IMD AWS integration pending)."
+          title="VARUNA blends ECMWF IFS, ECMWF AIFS, NOAA GFS and DWD ICON via an XGBoost meta-model. Forecast values come from Open-Meteo; verification references ERA5 reanalysis (not station observations). IMD AWS station ingestion is integration pending."
           aria-label="Operational Disclaimer"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

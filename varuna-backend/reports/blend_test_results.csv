@@ -1,0 +1,8 @@
+system,scope,partition,seasons,n,rmse,mae,bias,pearson_r
+ecmwf_ifs,held_out_test,final 20% chronological,post_monsoon,4512,1.195,0.924,-0.561,0.973
+ecmwf_aifs,held_out_test,final 20% chronological,post_monsoon,4512,1.105,0.866,0.51,0.981
+cep_gfs,held_out_test,final 20% chronological,post_monsoon,4512,2.32,1.874,0.674,0.93
+dwd_icon,held_out_test,final 20% chronological,post_monsoon,4512,1.131,0.876,0.056,0.969
+equal_blend,held_out_test,final 20% chronological,post_monsoon,4512,0.96,0.759,0.17,0.978
+static_inverse_rmse_blend,held_out_test,final 20% chronological,post_monsoon,4512,0.787,0.622,0.082,0.984
+varuna_adaptive,held_out_test,final 20% chronological,post_monsoon,4512,0.78,0.612,0.066,0.984

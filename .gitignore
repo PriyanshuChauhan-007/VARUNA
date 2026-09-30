@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python / backend
+__pycache__/
+*.py[cod]
+.pytest_cache/
+varuna-backend/cache/
+varuna-backend/.venv/
+venv/

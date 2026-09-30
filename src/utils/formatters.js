@@ -1,7 +1,7 @@
 /**
  * Formatting utilities for VARUNA — Adaptive Weather Intelligence
  */
-import { RISK_TIERS } from '../data/mockData.js';
+import { RISK_TIERS } from '../data/referenceData.js';
 
 export function getRiskColor(tier) {
   return RISK_TIERS[tier] || RISK_TIERS['Low'];

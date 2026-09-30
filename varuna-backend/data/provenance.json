@@ -1,0 +1,203 @@
+{
+  "generated_at": "2026-09-29T17:18:10Z",
+  "attribution": "Data: Open-Meteo (CC BY 4.0), ECMWF, NOAA, DWD. Verification reference: ERA5 reanalysis, not station observations.",
+  "reference_dataset": "ERA5 reanalysis (Open-Meteo archive API) - reference, not ground truth",
+  "providers": {
+    "previous_runs": "https://previous-runs-api.open-meteo.com/v1/forecast",
+    "archive": "https://archive-api.open-meteo.com/v1/archive",
+    "forecast": "https://api.open-meteo.com/v1/forecast"
+  },
+  "split_rule": "chronological by unique timestamp: earliest 65% train, next 15% validation, final 20% test; no shuffling; all rows of a timestamp share one partition",
+  "split_fractions": {
+    "train": 0.65,
+    "validation": 0.15,
+    "test": 0.2
+  },
+  "benchmark_windows": {
+    "winter": [
+      "2026-01-10",
+      "2026-01-17"
+    ],
+    "pre_monsoon": [
+      "2026-04-10",
+      "2026-04-17"
+    ],
+    "monsoon": [
+      "2026-07-01",
+      "2026-07-15"
+    ],
+    "post_monsoon": [
+      "2026-09-01",
+      "2026-09-08"
+    ]
+  },
+  "benchmark_regions": [
+    "bengaluru_deccan",
+    "delhi_ncr",
+    "mumbai_coastal",
+    "odisha_coast",
+    "rajasthan_thar",
+    "western_ghats"
+  ],
+  "variables": [
+    "temperature"
+  ],
+  "leads_hours": [
+    24,
+    48,
+    72,
+    120
+  ],
+  "library_versions": {
+    "python": "3.14.2",
+    "pandas": "3.0.6",
+    "numpy": "2.5.3",
+    "scikit_learn": "1.9.1",
+    "xgboost": "3.4.1",
+    "joblib": "1.6.0"
+  },
+  "failed_fetches": [],
+  "test_season_caveat": "The held-out test partition is entirely the chronologically last season (Post-Monsoon Sep 1-8, 2026). Headline numbers therefore describe one season only and must not be read as verified across all seasons.",
+  "rows_total": 21042,
+  "timestamps_total": 936,
+  "timestamp_range": [
+    "2026-01-10T00:00",
+    "2026-09-08T23:00"
+  ],
+  "rows_per_season": {
+    "monsoon": 8640,
+    "winter": 4608,
+    "post_monsoon": 4608,
+    "pre_monsoon": 3186
+  },
+  "rows_per_region": {
+    "bengaluru_deccan": 3507,
+    "delhi_ncr": 3507,
+    "mumbai_coastal": 3507,
+    "odisha_coast": 3507,
+    "rajasthan_thar": 3507,
+    "western_ghats": 3507
+  },
+  "rows_per_lead": {
+    "24": 5154,
+    "48": 5616,
+    "72": 5154,
+    "120": 5118
+  },
+  "split_rows": {
+    "train": 13170,
+    "validation": 3360,
+    "test": 4512
+  },
+  "split_timestamps": {
+    "train": 608,
+    "validation": 140,
+    "test": 188
+  },
+  "split_timestamp_range": {
+    "train": [
+      "2026-01-10T00:00",
+      "2026-07-10T07:00"
+    ],
+    "validation": [
+      "2026-07-10T08:00",
+      "2026-09-01T03:00"
+    ],
+    "test": [
+      "2026-09-01T04:00",
+      "2026-09-08T23:00"
+    ]
+  },
+  "trained_variable": "temperature",
+  "static_inverse_rmse_weights_train_only": {
+    "ecmwf_ifs": 33,
+    "ecmwf_aifs": 37,
+    "cep_gfs": 10,
+    "dwd_icon": 20
+  },
+  "train_rmse_per_model": {
+    "ecmwf_ifs": 1.7352,
+    "ecmwf_aifs": 1.6554,
+    "cep_gfs": 3.2404,
+    "dwd_icon": 2.2318
+  },
+  "replay": {
+    "available": true,
+    "rows": 4608,
+    "regions": [
+      "bengaluru_deccan",
+      "delhi_ncr",
+      "mumbai_coastal",
+      "odisha_coast",
+      "rajasthan_thar",
+      "western_ghats"
+    ]
+  },
+  "artifacts": {
+    "aligned_csv": "aligned_multi_season_lead_data.csv",
+    "meta_model": "xgboost_meta_temperature.joblib",
+    "blend_test_results": "blend_test_results.csv",
+    "replay_timelines": "timelines.json"
+  },
+  "held_out_test_systems": [
+    "ecmwf_ifs",
+    "ecmwf_aifs",
+    "cep_gfs",
+    "dwd_icon",
+    "equal_blend",
+    "static_inverse_rmse_blend",
+    "varuna_adaptive"
+  ],
+  "held_out_test_headline": {
+    "ecmwf_ifs": {
+      "n": 4512,
+      "rmse": 1.195,
+      "mae": 0.924,
+      "bias": -0.561,
+      "pearson_r": 0.973
+    },
+    "ecmwf_aifs": {
+      "n": 4512,
+      "rmse": 1.105,
+      "mae": 0.866,
+      "bias": 0.51,
+      "pearson_r": 0.981
+    },
+    "cep_gfs": {
+      "n": 4512,
+      "rmse": 2.32,
+      "mae": 1.874,
+      "bias": 0.674,
+      "pearson_r": 0.93
+    },
+    "dwd_icon": {
+      "n": 4512,
+      "rmse": 1.131,
+      "mae": 0.876,
+      "bias": 0.056,
+      "pearson_r": 0.969
+    },
+    "equal_blend": {
+      "n": 4512,
+      "rmse": 0.96,
+      "mae": 0.759,
+      "bias": 0.17,
+      "pearson_r": 0.978
+    },
+    "static_inverse_rmse_blend": {
+      "n": 4512,
+      "rmse": 0.787,
+      "mae": 0.622,
+      "bias": 0.082,
+      "pearson_r": 0.984
+    },
+    "varuna_adaptive": {
+      "n": 4512,
+      "rmse": 0.78,
+      "mae": 0.612,
+      "bias": 0.066,
+      "pearson_r": 0.984
+    }
+  },
+  "duration_s": 26.1
+}

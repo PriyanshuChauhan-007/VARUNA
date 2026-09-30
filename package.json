@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node src/ml/scientific_audit.test.js",
+    "test": "node --test src/services/api.test.js src/verification/verification.test.js",
     "preview": "vite preview"
   },
   "dependencies": {
