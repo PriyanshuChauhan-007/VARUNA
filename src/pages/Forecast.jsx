@@ -100,6 +100,8 @@ export default function Forecast() {
     unit = '',
     whyThisBlend = {},
     horizonNote = null,
+    weightingScheme = 'equal_fallback_untrained',
+    weightingReason = null,
   } = displayForecast || {};
 
   const formattedLead = selectedLeadTime.startsWith('+') ? selectedLeadTime : `+${selectedLeadTime}`;
@@ -116,7 +118,18 @@ export default function Forecast() {
     ? (Math.max(...memberValues) - Math.min(...memberValues)).toFixed(1)
     : '0.0';
 
-  // Compute sum of weights
+  // Compute sum of weights and verify adaptive vs equal weighting
+  const modelWeights = [
+    models.ifs?.weight,
+    models.aifs?.weight,
+    models.gfs?.weight,
+    models.icon?.weight,
+  ].filter((w) => typeof w === 'number');
+
+  const allWeightsEqual = modelWeights.length > 0 && modelWeights.every((w) => w === modelWeights[0]);
+  const currentVariableId = variable.id || selectedVariable;
+  const isAdaptive = currentVariableId === 'temperature' && weightingScheme === 'adaptive_xgboost' && !allWeightsEqual;
+
   const weightsSum = (
     (models.ifs?.weight || 0) +
     (models.aifs?.weight || 0) +
@@ -133,7 +146,8 @@ export default function Forecast() {
             Forecast Analysis &amp; Ensembles
           </h1>
           <p className="mt-1 text-scale-sm text-[var(--color-text-secondary)]">
-            Multi-model NWP-AI blending (ECMWF IFS, ECMWF AIFS, NOAA GFS, DWD ICON) with contextual error minimization
+            Multi-model NWP-AI blending (ECMWF IFS, ECMWF AIFS, NOAA GFS, DWD ICON) with{' '}
+            {isAdaptive ? 'contextual error minimization' : 'operational equal-weight ensemble'}
           </p>
         </div>
 
@@ -272,7 +286,9 @@ export default function Forecast() {
             </span>
           </div>
           <div className="mt-1 text-[11px] text-[var(--color-text-secondary)]">
-            Contextual Hybrid Blend ({formattedLead})
+            {isAdaptive
+              ? `Contextual Hybrid Blend (${formattedLead})`
+              : `Operational Equal-Weight Blend (${formattedLead})`}
           </div>
         </div>
 
@@ -298,17 +314,32 @@ export default function Forecast() {
             Top Driving Model
           </div>
           <div className="flex items-baseline gap-1 mt-1">
-            <span className="font-data text-2xl font-bold text-purple-600">
-              {whyThisBlend.topModel?.name || 'ECMWF IFS'}
-            </span>
-            <span className="text-scale-sm font-bold text-[var(--color-text-secondary)] font-data">
-              ({whyThisBlend.topModel?.pct || 25}%)
-            </span>
+            {isAdaptive ? (
+              <>
+                <span className="font-data text-2xl font-bold text-purple-600">
+                  {whyThisBlend.topModel?.name || 'ECMWF IFS'}
+                </span>
+                <span className="text-scale-sm font-bold text-[var(--color-text-secondary)] font-data">
+                  ({whyThisBlend.topModel?.pct || 25}%)
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="font-data text-xl md:text-2xl font-bold text-slate-700 dark:text-slate-200">
+                  No dominant model
+                </span>
+                <span className="text-scale-xs font-semibold text-[var(--color-text-secondary)] font-data">
+                  ({modelWeights[0] || 25}% each)
+                </span>
+              </>
+            )}
           </div>
           <div className="mt-1 text-[11px] text-[var(--color-text-secondary)] truncate">
-            {whyThisBlend.topModel?.error !== undefined
-              ? `Est. Contextual Error: ${whyThisBlend.topModel.error} ${unit}`
-              : `Weighted Reliability Allocation (${formattedLead})`}
+            {isAdaptive
+              ? (whyThisBlend.topModel?.error !== undefined
+                  ? `Est. Contextual Error: ${whyThisBlend.topModel.error} ${unit}`
+                  : `Contextual Error Minimization (${formattedLead})`)
+              : 'Equal-weight fallback across available forecast members.'}
           </div>
         </div>
 
@@ -462,14 +493,24 @@ export default function Forecast() {
           </div>
         </ChartCard>
 
-        {/* Multi-Model Consensus & Adaptive Weight Contribution (Phase 6 & 10) */}
+        {/* Multi-Model Consensus & Weight Contribution (Phase 6 & 10) */}
         <ChartCard
-          title="Multi-Model Consensus & Adaptive Weight Contribution"
-          subtitle="Real-time contextual weights allocated by Python XGBoost meta-model based on synoptic conditions"
+          title={
+            isAdaptive
+              ? 'Multi-Model Consensus & Adaptive Weight Contribution'
+              : 'Multi-Model Consensus & Operational Equal-Weight Ensemble'
+          }
+          subtitle={
+            isAdaptive
+              ? 'Real-time contextual weights allocated by Python XGBoost meta-model based on synoptic conditions'
+              : `Operational Equal-Weight Ensemble. ML weighting is not yet trained or validated for ${variable.label || selectedVariable}.`
+          }
           badge={
             isFallback
               ? 'DEMO / FALLBACK'
-              : `Total Weight: ${weightsSum}% (Hamilton-Hare Normalized)`
+              : isAdaptive
+              ? `Total Weight: ${weightsSum}% (Hamilton-Hare Normalized)`
+              : `Total Weight: ${weightsSum}% (Equal Allocation)`
           }
         >
           <div className="space-y-4 pt-1">
@@ -548,7 +589,9 @@ export default function Forecast() {
                   VARUNA Final Blended Forecast
                 </span>
                 <span className="text-[11px] text-[var(--color-text-secondary)]">
-                  Contextual synthesis: Σ (Weight × Forecast) / 100
+                  {isAdaptive
+                    ? 'Contextual synthesis: Σ (Weight × Forecast) / 100'
+                    : 'Arithmetic ensemble mean: Σ (Forecast) / 4 (Equal weights)'}
                 </span>
               </div>
               <div className="font-data font-bold text-amber-700 text-scale-base sm:text-scale-lg">
@@ -557,16 +600,19 @@ export default function Forecast() {
             </div>
 
             {/* Explanation box (Phase 10) */}
-            {whyThisBlend.explanation && (
-              <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-scale-xs">
-                <span className="font-bold text-[var(--color-text-primary)] block mb-1">
-                  Why this blend?
-                </span>
-                <p className="text-[var(--color-text-secondary)] text-[11px] leading-relaxed">
-                  {whyThisBlend.explanation}
-                </p>
-              </div>
-            )}
+            <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-scale-xs">
+              <span className="font-bold text-[var(--color-text-primary)] block mb-1">
+                {isAdaptive ? 'Why this blend?' : 'Weighting Methodology'}
+              </span>
+              <p className="text-[var(--color-text-secondary)] text-[11px] leading-relaxed">
+                {isAdaptive
+                  ? (whyThisBlend.explanation ||
+                    `${whyThisBlend.topModel?.name || 'Top model'} is allocated the highest weight because the XGBoost meta-model predicted the lowest contextual error for this region at ${formattedLead} lead.`)
+                  : (weightingReason ||
+                    whyThisBlend.explanation ||
+                    'Equal-weight fallback across available forecast members. No meta-model trained for this variable yet; equal weights are used and skill is unvalidated.')}
+              </p>
+            </div>
           </div>
         </ChartCard>
       </div>

@@ -237,6 +237,8 @@ export function normalizeForecastResponse(raw, requestedLeadTime) {
   };
 
   // Identify top driving model from real adaptive weights
+  const allWeightsEqual = weightValues.length > 0 && weightValues.every((w) => w === weightValues[0]);
+
   const topKey = Object.keys(weights).reduce((best, curr) => {
     return (weights[curr] || 0) > (weights[best] || 0) ? curr : best;
   }, 'ecmwf_ifs');
@@ -244,15 +246,25 @@ export function normalizeForecastResponse(raw, requestedLeadTime) {
   const topModelMeta = CANONICAL_MODEL_NAMES[topKey] || { name: topKey };
   const topWeight = weights[topKey] || 0;
 
+  const isAdaptive = variable === 'temperature' && weighting_scheme === 'adaptive_xgboost' && !allWeightsEqual;
+
   const whyThisBlend = {
-    topModel: {
-      key: topKey,
-      name: topModelMeta.name,
-      pct: topWeight,
-    },
-    explanation: weighting_scheme === 'adaptive_xgboost'
+    topModel: isAdaptive
+      ? {
+          key: topKey,
+          name: topModelMeta.name,
+          pct: topWeight,
+          isDominant: true,
+        }
+      : {
+          key: 'none',
+          name: 'No dominant model',
+          pct: topWeight,
+          isDominant: false,
+        },
+    explanation: isAdaptive
       ? `${topModelMeta.name} is allocated the highest weight (${topWeight}%) because the XGBoost meta-model predicted the lowest contextual error for ${regionObj.name} at +${actualLeadH}h lead.`
-      : (weighting_reason || 'Equal weighting fallback applied across active numerical members.'),
+      : (weighting_reason || 'Equal-weight fallback across available forecast members. No ML meta-model trained or validated for this variable.'),
   };
 
   // Recharts timeseries formatting
@@ -294,7 +306,9 @@ export function normalizeForecastResponse(raw, requestedLeadTime) {
     supportedHorizons: ['24h', '48h', '72h', '120h', '7d'],
     availableHorizonHours: timeline.length,
     horizonNote: horizon_note,
-    provenance: { attribution, models_used, degraded, validated, weighting_scheme },
+    weightingScheme: weighting_scheme,
+    weightingReason: weighting_reason,
+    provenance: { attribution, models_used, degraded, validated, weighting_scheme, weighting_reason },
   };
 }
 
