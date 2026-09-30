@@ -1,6 +1,0 @@
-model,mean_rmse,mean_mae,mean_bias,mean_correlation,total_samples
-ecmwf_ifs,0.644,0.436,0.082,0.95,3024
-ecmwf_aifs,1.311,1.058,0.75,0.892,3024
-ncep_gfs,2.083,1.675,1.338,0.813,3024
-dwd_icon,1.256,0.977,0.435,0.88,3024
-varuna_blend,0.557,0.386,0.165,0.956,3024

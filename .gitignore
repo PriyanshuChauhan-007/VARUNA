@@ -30,6 +30,10 @@ __pycache__/
 .pytest_cache/
 
 # Runtime Caches & Local Databases
+*.sqlite3
+*.sqlite
 backend/cache/*.sqlite3
 backend/cache/*.sqlite
-backend/**/__pycache__/
+varuna-backend/cache/
+varuna-backend/**/__pycache__/
+

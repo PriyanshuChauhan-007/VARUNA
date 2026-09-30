@@ -1,0 +1,5 @@
+model,system,scope,n,rmse,mae,bias,pearson_r
+ecmwf_ifs,ecmwf_ifs,full_dataset_all_splits,21042,1.595,1.248,-0.193,0.969
+ecmwf_aifs,ecmwf_aifs,full_dataset_all_splits,21042,1.485,1.108,0.465,0.975
+ncep_gfs,ncep_gfs,full_dataset_all_splits,21042,2.996,2.269,1.146,0.914
+dwd_icon,dwd_icon,full_dataset_all_splits,21042,1.944,1.423,0.059,0.951

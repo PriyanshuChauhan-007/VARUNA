@@ -1,8 +1,0 @@
-dataset,model,rmse,mae,bias,correlation,sample_count
-full_benchmark,ecmwf_ifs,1.3112,0.9128,0.0495,0.9791,21042
-full_benchmark,ecmwf_aifs,1.7847,1.3645,0.7075,0.9669,21042
-full_benchmark,ncep_gfs,2.8214,1.9914,1.389,0.9326,21042
-full_benchmark,dwd_icon,1.9704,1.3958,0.3017,0.9524,21042
-full_benchmark,equal_blend,1.4192,1.0373,0.6119,0.9798,21042
-full_benchmark,inv_rmse_blend,1.251,0.9103,0.4067,0.9828,21042
-full_benchmark,varuna_blend,1.0169,0.7291,0.1698,0.9876,21042
