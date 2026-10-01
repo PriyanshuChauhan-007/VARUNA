@@ -1,0 +1,54 @@
+{
+  "timestamp": "2026-09-24T14:32:40.960106+00:00",
+  "access": {
+    "service": "ECMWF TIGGE (The THORPEX Interactive Grand Global Ensemble)",
+    "url": "https://www.ecmwf.int/en/forecasts/datasets/tigge-global-medium-range-ensemble-forecasts-multiple-nwp-centres-2006",
+    "credentials_file": "C:\\Users\\aayus\\.ecmwfapirc",
+    "credentials_present": false,
+    "status": "BLOCKED_CREDENTIALS_REQUIRED",
+    "reason": "ECMWF MARS API key (.ecmwfapirc) not found in system. Registration at ECMWF Data Services is required to fetch real-time or historical Day 8-10 TIGGE raw GRIB fields.",
+    "fallback_policy": "Core Day 1-7 training system operates on verified WeatherGPT D1 (Open-Meteo NWP + ERA5-Land). Day 8-10 predictions return 'data_unavailable_for_training' until TIGGE archive is ingested. No fake or interpolated data will be generated."
+  },
+  "schema_extension": {
+    "lead_hours_range": [
+      168,
+      240
+    ],
+    "lead_days": [
+      8,
+      9,
+      10
+    ],
+    "day_mapping": {
+      "Day 8": [
+        168,
+        191
+      ],
+      "Day 9": [
+        192,
+        215
+      ],
+      "Day 10": [
+        216,
+        240
+      ]
+    },
+    "required_fields": [
+      "loc_id",
+      "lat",
+      "lon",
+      "valid_time",
+      "init_time",
+      "lead_hours",
+      "lead_day",
+      "fc_temperature_2m_ensemble_mean",
+      "fc_temperature_2m_ensemble_std",
+      "fc_precipitation_ensemble_mean",
+      "fc_precipitation_ensemble_std",
+      "fc_wind_speed_10m_ensemble_mean",
+      "fc_wind_speed_10m_ensemble_std",
+      "fc_relative_humidity_2m_ensemble_mean",
+      "fc_relative_humidity_2m_ensemble_std"
+    ]
+  }
+}
