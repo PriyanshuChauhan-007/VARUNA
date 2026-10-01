@@ -1,7 +1,33 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Manrope:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 :root {
+  /* VARUNA Core Palette - Light Blue + White + Cool Slate + Atmospheric Blue */
+  --varuna-bg: #F5F9FC;
+  --varuna-surface: #FFFFFF;
+  --varuna-surface-soft: #EDF5FA;
+
+  --varuna-blue: #2F7FB5;
+  --varuna-blue-dark: #245F89;
+  --varuna-blue-light: #E6F2FA;
+
+  --varuna-text: #142B3A;
+  --varuna-text-secondary: #526A79;
+  --varuna-text-muted: #7A8D99;
+
+  --varuna-border: #D8E5EC;
+  --varuna-border-strong: #C4D6E0;
+
+  --varuna-success: #16845B;
+  --varuna-warning: #C88719;
+  --varuna-danger: #C93C3C;
+
+  /* Typography */
+  --font-ui: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-data: 'IBM Plex Mono', monospace;
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-data);
+
   /* 8px Base Spacing Scale */
   --space-1: 8px;
   --space-2: 16px;
@@ -10,91 +36,116 @@
   --space-6: 48px;
   --space-8: 64px;
 
-  /* 1.25 Modular Type Scale (Base 16px) */
+  /* Modular Type Scale */
   --text-scale-xs: 12px;
   --text-scale-sm: 14px;
   --text-scale-base: 16px;
   --text-scale-md: 20px;
-  --text-scale-lg: 25px;
-  --text-scale-xl: 31px;
-  --text-scale-2xl: 39px;
-  --text-scale-3xl: 49px;
+  --text-scale-lg: 24px;
+  --text-scale-xl: 30px;
+  --text-scale-2xl: 38px;
+  --text-scale-3xl: 48px;
 
   /* Line Heights */
-  --leading-heading: 1.15;
+  --leading-heading: 1.2;
   --leading-body: 1.55;
 
-  /* Transitions */
-  --transition-fast: 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  /* Transitions (180ms - 250ms, calm & restrained) */
+  --transition-fast: 160ms cubic-bezier(0.16, 1, 0.3, 1);
   --transition-normal: 200ms cubic-bezier(0.16, 1, 0.3, 1);
-  --transition-slow: 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-slow: 240ms cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* Light Theme Palette (THERMOS Warm Technical Contrast) */
-  --color-surface: #FAFAF8;
-  --color-panel: #FFFFFF;
-  --color-surface-card: #FFFFFF;
-  --color-surface-muted: #F2F0EB;
-  --color-surface-hover: #ECEAE3;
-  --color-surface-elevated: #FFFFFF;
+  /* Theme tokens mapped to VARUNA foundation */
+  --color-surface: var(--varuna-bg);
+  --color-panel: var(--varuna-surface);
+  --color-surface-card: var(--varuna-surface);
+  --color-surface-muted: var(--varuna-surface-soft);
+  --color-surface-hover: var(--varuna-blue-light);
+  --color-surface-elevated: var(--varuna-surface);
 
-  --color-accent: #F5C518;
-  --color-accent-subtle: #FEF9E7;
-  --color-accent-hover: #EAB308;
-  --color-status-live: #16A34A;
+  --color-accent: var(--varuna-blue);
+  --color-accent-subtle: var(--varuna-blue-light);
+  --color-accent-hover: var(--varuna-blue-dark);
+  --color-status-live: var(--varuna-success);
 
-  --color-border: #E8E5DE;
-  --color-border-subtle: #F0EDE6;
-  --color-border-strong: #D8D4CA;
+  --color-border: var(--varuna-border);
+  --color-border-subtle: #E8F1F6;
+  --color-border-strong: var(--varuna-border-strong);
 
-  --color-text-primary: #1A1A17;
-  --color-text-secondary: #484841;
-  --color-text-tertiary: #75756C;
-  --color-text-muted: #9C9C91;
+  --color-text-primary: var(--varuna-text);
+  --color-text-secondary: var(--varuna-text-secondary);
+  --color-text-tertiary: var(--varuna-text-muted);
+  --color-text-muted: var(--varuna-text-muted);
 
-  /* Weather & Risk Semantic Colors */
-  --color-risk-critical: #DC2626;
-  --color-risk-high: #EA580C;
-  --color-risk-medium: #D97706;
-  --color-risk-moderate: #D97706;
-  --color-risk-low: #16A34A;
+  /* Meteorological Semantic Colors */
+  --color-risk-critical: #C93C3C;
+  --color-risk-high: #D9682C;
+  --color-risk-medium: #C88719;
+  --color-risk-moderate: #C88719;
+  --color-risk-low: #16845B;
 
-  --color-model-ifs: #2563EB;
-  --color-model-aifs: #8B5CF6;
-  --color-model-gfs: #059669;
-  --color-model-blend: #D97706;
+  /* Distinct Scientific NWP Model Palette */
+  --color-model-ifs: #1E40AF;    /* Deep Blue */
+  --color-model-aifs: #0284C7;   /* Cyan / Sky Blue */
+  --color-model-gfs: #0D9488;    /* Teal */
+  --color-model-icon: #64748B;   /* Cool Slate */
+  --color-model-blend: #245F89;  /* Stronger Primary Blue */
 
-  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  /* Moderate Corner Radii (10px–14px per Section 5) */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
 }
 
-/* Dark Theme Overrides */
+/* Dark Theme Overrides - Deep Atmospheric Blue / Slate */
 [data-theme="dark"],
 .dark {
-  --color-surface: #0a0e17;
-  --color-panel: #111827;
-  --color-surface-card: #111827;
-  --color-surface-muted: #182234;
-  --color-surface-hover: #1f2b40;
-  --color-surface-elevated: #1e293b;
+  --varuna-bg: #0B1320;
+  --varuna-surface: #101B2E;
+  --varuna-surface-soft: #172740;
 
-  --color-accent: #F5C518;
-  --color-accent-subtle: rgba(245, 197, 24, 0.12);
-  --color-accent-hover: #FCD34D;
-  --color-status-live: #22C55E;
+  --varuna-blue: #38BDF8;
+  --varuna-blue-dark: #0284C7;
+  --varuna-blue-light: rgba(56, 189, 248, 0.12);
 
-  --color-border: #243044;
-  --color-border-subtle: #192333;
-  --color-border-strong: #33435c;
+  --varuna-text: #F1F6FA;
+  --varuna-text-secondary: #94A8B8;
+  --varuna-text-muted: #647D91;
 
-  --color-text-primary: #F8FAFC;
-  --color-text-secondary: #CBD5E1;
-  --color-text-tertiary: #94A3B8;
-  --color-text-muted: #64748B;
+  --varuna-border: #1E334D;
+  --varuna-border-strong: #2A476B;
+
+  --varuna-success: #22C55E;
+  --varuna-warning: #F59E0B;
+  --varuna-danger: #EF4444;
+
+  --color-surface: var(--varuna-bg);
+  --color-panel: var(--varuna-surface);
+  --color-surface-card: var(--varuna-surface);
+  --color-surface-muted: var(--varuna-surface-soft);
+  --color-surface-hover: rgba(56, 189, 248, 0.08);
+  --color-surface-elevated: #152238;
+
+  --color-accent: var(--varuna-blue);
+  --color-accent-subtle: var(--varuna-blue-light);
+  --color-accent-hover: var(--varuna-blue-dark);
+  --color-status-live: var(--varuna-success);
+
+  --color-border: var(--varuna-border);
+  --color-border-subtle: #17283E;
+  --color-border-strong: var(--varuna-border-strong);
+
+  --color-text-primary: var(--varuna-text);
+  --color-text-secondary: var(--varuna-text-secondary);
+  --color-text-tertiary: var(--varuna-text-muted);
+  --color-text-muted: var(--varuna-text-muted);
+
+  --color-model-ifs: #3B82F6;
+  --color-model-aifs: #38BDF8;
+  --color-model-gfs: #14B8A6;
+  --color-model-icon: #94A3B8;
+  --color-model-blend: #38BDF8;
 }
 
 /* Base reset and defaults */
@@ -105,7 +156,7 @@
 }
 
 html {
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
   font-size: 16px;
   color: var(--color-text-primary);
   background: var(--color-surface);
@@ -118,6 +169,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
+  font-family: var(--font-ui);
   font-size: var(--text-scale-base);
   line-height: var(--leading-body);
   background: var(--color-surface);
@@ -136,23 +188,22 @@ body {
 .text-scale-sm { font-size: var(--text-scale-sm); line-height: 1.45; }
 .text-scale-base { font-size: var(--text-scale-base); line-height: var(--leading-body); }
 .text-scale-md { font-size: var(--text-scale-md); line-height: 1.3; }
-.text-scale-lg { font-size: var(--text-scale-lg); line-height: var(--leading-heading); letter-spacing: -0.02em; }
-.text-scale-xl { font-size: var(--text-scale-xl); line-height: var(--leading-heading); letter-spacing: -0.025em; }
-.text-scale-2xl { font-size: var(--text-scale-2xl); line-height: var(--leading-heading); letter-spacing: -0.03em; }
-.text-scale-3xl { font-size: var(--text-scale-3xl); line-height: var(--leading-heading); letter-spacing: -0.035em; }
+.text-scale-lg { font-size: var(--text-scale-lg); line-height: var(--leading-heading); letter-spacing: -0.015em; }
+.text-scale-xl { font-size: var(--text-scale-xl); line-height: var(--leading-heading); letter-spacing: -0.02em; }
+.text-scale-2xl { font-size: var(--text-scale-2xl); line-height: var(--leading-heading); letter-spacing: -0.025em; }
+.text-scale-3xl { font-size: var(--text-scale-3xl); line-height: var(--leading-heading); letter-spacing: -0.03em; }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
   line-height: var(--leading-heading);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
 }
 
 /* Monospace & Tabular Data Elements */
 .font-data {
-  font-family: var(--font-mono);
+  font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1;
-  letter-spacing: -0.01em;
 }
 
 .tabular-nums {
@@ -160,24 +211,42 @@ h1, h2, h3, h4, h5, h6 {
   font-feature-settings: 'tnum' 1;
 }
 
-/* Technical grid background with + marks */
-.technical-grid {
+/* Atmospheric / Meteorological background patterns */
+.atmospheric-grid {
   background-size: 40px 40px;
-  background-image: 
-    radial-gradient(circle, var(--color-border-strong) 1px, transparent 1px);
+  background-image: radial-gradient(circle, var(--varuna-border) 1px, transparent 1px);
+}
+
+.atmospheric-contour-bg {
+  background-image:
+    radial-gradient(ellipse at 30% 20%, rgba(47, 127, 181, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 80%, rgba(36, 95, 137, 0.05) 0%, transparent 50%),
+    linear-gradient(to right, rgba(216, 229, 236, 0.35) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(216, 229, 236, 0.35) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
+}
+
+.dark .atmospheric-contour-bg {
+  background-image:
+    radial-gradient(ellipse at 30% 20%, rgba(56, 189, 248, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 80%, rgba(2, 132, 199, 0.05) 0%, transparent 50%),
+    linear-gradient(to right, rgba(30, 51, 77, 0.4) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(30, 51, 77, 0.4) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
 }
 
 .technical-cross-grid {
-  background-image: 
-    linear-gradient(to right, rgba(0,0,0,0.04) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0,0,0,0.04) 1px, transparent 1px);
+  background-image:
+    linear-gradient(to right, rgba(47, 127, 181, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(47, 127, 181, 0.05) 1px, transparent 1px);
   background-size: 48px 48px;
 }
 
 .dark .technical-cross-grid {
-  background-image: 
-    linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-image:
+    linear-gradient(to right, rgba(56, 189, 248, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(56, 189, 248, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
 }
 
 /* Smooth Interactive Elements */
@@ -201,7 +270,7 @@ a, button, input, select, textarea {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-tertiary);
+  background: var(--varuna-text-muted);
 }
 
 /* MapLibre overrides */
@@ -209,9 +278,9 @@ a, button, input, select, textarea {
   background: var(--color-panel) !important;
   border: 1px solid var(--color-border) !important;
   border-radius: var(--radius-lg) !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 8px 24px rgba(20, 43, 58, 0.12) !important;
   padding: 0 !important;
-  font-family: var(--font-sans) !important;
+  font-family: var(--font-ui) !important;
 }
 
 .maplibregl-popup-tip {
@@ -224,11 +293,34 @@ a, button, input, select, textarea {
   color: var(--color-text-secondary);
 }
 
-/* High-tech pulsing rings */
+/* Custom Navigation Control styling for + and - buttons */
+.maplibregl-ctrl-group {
+  background: var(--varuna-surface) !important;
+  border: 1px solid var(--varuna-border) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 4px 12px rgba(20, 43, 58, 0.08) !important;
+  overflow: hidden;
+}
+
+.maplibregl-ctrl-group button {
+  background: transparent !important;
+  border-bottom: 1px solid var(--varuna-border) !important;
+  color: var(--varuna-text) !important;
+}
+
+.maplibregl-ctrl-group button:last-child {
+  border-bottom: none !important;
+}
+
+.maplibregl-ctrl-group button:hover {
+  background: var(--varuna-blue-light) !important;
+}
+
+/* Atmospheric pulsing rings */
 @keyframes tp {
-  0% { transform: scale(1); opacity: 0.9; }
-  70% { transform: scale(4.2); opacity: 0; }
-  100% { transform: scale(4.2); opacity: 0; }
+  0% { transform: scale(1); opacity: 0.8; }
+  70% { transform: scale(3.6); opacity: 0; }
+  100% { transform: scale(3.6); opacity: 0; }
 }
 
 .pulse-ring {
@@ -241,7 +333,7 @@ a, button, input, select, textarea {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 1.5px solid var(--color-accent);
+  border: 1.5px solid var(--varuna-blue);
   animation: tp 3s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
 }
 .pulse-ring::after {

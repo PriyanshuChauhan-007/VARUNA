@@ -11,6 +11,7 @@ from .api import (
     routes_regions,
     routes_skill,
     routes_weights,
+    routes_analyze,
 )
 from .config import APP_VERSION, ATTRIBUTION, CORS_ORIGINS
 from .services import blend_service as svc
@@ -29,7 +30,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=False,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -41,6 +42,7 @@ for _mod in (
     routes_providers,
     routes_explain,
     routes_regions,
+    routes_analyze,
 ):
     app.include_router(_mod.router)
 
@@ -60,6 +62,8 @@ def root():
             "GET /api/regions",
             "GET /api/forecast?region=&variable=&lead_time_hours=",
             "GET /api/weights?region=&variable=&lead_time_hours=",
+            "POST /api/analyze",
+            "GET /api/analyze?region=&variable=&lead_time_hours=",
             "GET /api/skill",
             "GET /api/extremes?region=&lead_time_hours=",
             "GET /api/explain?region=&variable=&lead_time_hours=",
@@ -67,3 +71,4 @@ def root():
         ],
         "attribution": ATTRIBUTION,
     }
+

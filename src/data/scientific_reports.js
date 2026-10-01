@@ -16,7 +16,9 @@ const MODEL_DISPLAY_NAMES = {
   dwd_icon: 'DWD ICON',
   equal_blend: 'Equal-Weight Blend',
   inv_rmse_blend: 'Inverse-RMSE Baseline',
+  static_inverse_rmse_blend: 'Inverse-RMSE Baseline',
   varuna_blend: 'VARUNA Adaptive Blend',
+  varuna_adaptive: 'VARUNA Adaptive Blend',
 };
 
 const MODEL_COLORS = {
@@ -26,7 +28,9 @@ const MODEL_COLORS = {
   dwd_icon: '#F59E0B',
   equal_blend: '#6B7280',
   inv_rmse_blend: '#EA580C',
+  static_inverse_rmse_blend: '#EA580C',
   varuna_blend: '#D97706',
+  varuna_adaptive: '#D97706',
 };
 
 const REGION_REGIME_NAMES = {
@@ -40,48 +44,53 @@ const REGION_REGIME_NAMES = {
 
 /**
  * Returns strict held-out test evaluation records (N = 4,512)
+ * Supports optional live source rows from /api/skill
  */
-export function getHeldOutTestMetrics() {
-  const records = verifiedScienceData.held_out_test || [];
-  const mapped = records.map((r) => ({
-    modelKey: r.model,
-    modelName: MODEL_DISPLAY_NAMES[r.model] || r.model,
-    rmse: Number(r.rmse.toFixed(4)),
-    mae: Number(r.mae.toFixed(4)),
-    bias: Number(r.bias.toFixed(4)),
-    correlation: Number(r.correlation.toFixed(4)),
-    samples: r.sample_count,
-    color: MODEL_COLORS[r.model] || '#666',
-    isBlend: r.model === 'varuna_blend',
-  }));
+export function getHeldOutTestMetrics(sourceRows) {
+  const records = sourceRows || verifiedScienceData.held_out_test || [];
+  const mapped = records.map((r) => {
+    const key = r.system || r.model;
+    const isVaruna = key === 'varuna_adaptive' || key === 'varuna_blend';
+    return {
+      modelKey: key,
+      modelName: MODEL_DISPLAY_NAMES[key] || key,
+      rmse: Number(Number(r.rmse).toFixed(4)),
+      mae: Number(Number(r.mae).toFixed(4)),
+      bias: Number(Number(r.bias).toFixed(4)),
+      correlation: Number(Number(r.correlation ?? r.pearson_r ?? 0).toFixed(4)),
+      samples: r.sample_count ?? r.n ?? 4512,
+      color: MODEL_COLORS[key] || '#666',
+      isBlend: isVaruna,
+    };
+  });
 
-  const varunaRow = mapped.find((m) => m.modelKey === 'varuna_blend');
+  const varunaRow = mapped.find((m) => m.modelKey === 'varuna_adaptive' || m.modelKey === 'varuna_blend');
   const ifsRow = mapped.find((m) => m.modelKey === 'ecmwf_ifs');
   const equalRow = mapped.find((m) => m.modelKey === 'equal_blend');
-  const invRow = mapped.find((m) => m.modelKey === 'inv_rmse_blend');
+  const invRow = mapped.find((m) => m.modelKey === 'static_inverse_rmse_blend' || m.modelKey === 'inv_rmse_blend');
 
   const reductionVsIfs =
     ifsRow && varunaRow
       ? Number((((ifsRow.rmse - varunaRow.rmse) / ifsRow.rmse) * 100).toFixed(1))
-      : 18.3;
+      : 34.7;
 
   const reductionVsEqual =
     equalRow && varunaRow
       ? Number((((equalRow.rmse - varunaRow.rmse) / equalRow.rmse) * 100).toFixed(1))
-      : 22.4;
+      : 18.7;
 
   const reductionVsInv =
     invRow && varunaRow
       ? Number((((invRow.rmse - varunaRow.rmse) / invRow.rmse) * 100).toFixed(1))
-      : 11.8;
+      : 0.9;
 
   return {
     records: mapped,
-    bestNwpRmse: ifsRow?.rmse ?? 1.0613,
-    blendRmse: varunaRow?.rmse ?? 0.8674,
-    blendMae: varunaRow?.mae ?? 0.6539,
-    blendBias: varunaRow?.bias ?? 0.1166,
-    blendCorrelation: varunaRow?.correlation ?? 0.9837,
+    bestNwpRmse: ifsRow?.rmse ?? 1.195,
+    blendRmse: varunaRow?.rmse ?? 0.7803,
+    blendMae: varunaRow?.mae ?? 0.612,
+    blendBias: varunaRow?.bias ?? 0.066,
+    blendCorrelation: varunaRow?.correlation ?? 0.984,
     testSampleCount: varunaRow?.samples ?? 4512,
     reductionVsIfs,
     reductionVsEqual,
@@ -91,19 +100,23 @@ export function getHeldOutTestMetrics() {
 
 /**
  * Returns empirical lead time error degradation curve (24h, 48h, 72h, 120h)
+ * Supports optional live source rows from /api/skill
  */
-export function getLeadDegradationCurve() {
-  const rows = verifiedScienceData.by_lead || [];
+export function getLeadDegradationCurve(sourceRows) {
+  const rows = sourceRows || verifiedScienceData.by_lead || [];
   const leads = [24, 48, 72, 120];
 
   return leads.map((lead) => {
-    const sub = rows.filter((r) => r.lead_time_hours === lead);
-    const getVal = (mKey) => {
-      const found = sub.find((r) => r.model === mKey);
-      return found ? Number(found.rmse.toFixed(3)) : null;
+    const sub = rows.filter((r) => Number(r.lead_time_hours) === lead);
+    const getVal = (mKey, altKey) => {
+      const found = sub.find((r) => {
+        const k = r.system || r.model;
+        return k === mKey || (altKey && k === altKey);
+      });
+      return found ? Number(Number(found.rmse).toFixed(3)) : null;
     };
 
-    const nSample = sub[0]?.sample_count || 5154;
+    const nSample = sub[0]?.sample_count || sub[0]?.n || 5154;
 
     return {
       lead: `${lead}h`,
@@ -113,8 +126,8 @@ export function getLeadDegradationCurve() {
       GFS: getVal('ncep_gfs'),
       ICON: getVal('dwd_icon'),
       EQUAL: getVal('equal_blend'),
-      INV_RMSE: getVal('inv_rmse_blend'),
-      BLEND: getVal('varuna_blend'),
+      INV_RMSE: getVal('static_inverse_rmse_blend', 'inv_rmse_blend'),
+      BLEND: getVal('varuna_adaptive', 'varuna_blend'),
       samples: nSample,
     };
   });
@@ -122,26 +135,37 @@ export function getLeadDegradationCurve() {
 
 /**
  * Returns empirical seasonal verification breakdown (Winter, Pre-Monsoon, Monsoon, Post-Monsoon)
+ * Supports optional live source rows from /api/skill
  */
-export function getSeasonalBreakdown() {
-  const rows = verifiedScienceData.by_season || [];
-  const seasons = ['Winter', 'Pre-Monsoon', 'Monsoon', 'Post-Monsoon'];
+export function getSeasonalBreakdown(sourceRows) {
+  const rows = sourceRows || verifiedScienceData.by_season || [];
+  const seasons = [
+    { label: 'Winter', keys: ['winter', 'Winter'] },
+    { label: 'Pre-Monsoon', keys: ['pre_monsoon', 'Pre-Monsoon'] },
+    { label: 'Monsoon', keys: ['monsoon', 'Monsoon'] },
+    { label: 'Post-Monsoon', keys: ['post_monsoon', 'Post-Monsoon'] },
+  ];
 
-  return seasons.map((season) => {
-    const sub = rows.filter((r) => r.season === season);
-    const getVal = (mKey) => {
-      const found = sub.find((r) => r.model === mKey);
-      return found ? Number(found.rmse.toFixed(3)) : null;
+  return seasons.map(({ label, keys }) => {
+    const sub = rows.filter((r) => keys.includes(r.season) || keys.includes(r.season_key));
+    const getVal = (mKey, altKey) => {
+      const found = sub.find((r) => {
+        const k = r.system || r.model;
+        return k === mKey || (altKey && k === altKey);
+      });
+      return found ? Number(Number(found.rmse).toFixed(3)) : null;
     };
 
     return {
-      season,
+      season: label,
       IFS: getVal('ecmwf_ifs'),
       AIFS: getVal('ecmwf_aifs'),
       GFS: getVal('ncep_gfs'),
       ICON: getVal('dwd_icon'),
-      BLEND: getVal('varuna_blend'),
-      samples: sub[0]?.sample_count || 4608,
+      EQUAL: getVal('equal_blend'),
+      INV_RMSE: getVal('static_inverse_rmse_blend', 'inv_rmse_blend'),
+      BLEND: getVal('varuna_adaptive', 'varuna_blend'),
+      samples: sub[0]?.sample_count || sub[0]?.n || 4608,
     };
   });
 }
@@ -149,9 +173,10 @@ export function getSeasonalBreakdown() {
 /**
  * Returns empirical regional / regime verification breakdown for Models page
  * Replaces fake 0-100 capability matrix with actual verified RMSE across Indian zones
+ * Supports optional live source rows from /api/skill
  */
-export function getRegionalRegimeVerification() {
-  const rows = verifiedScienceData.by_region || [];
+export function getRegionalRegimeVerification(sourceRows) {
+  const rows = sourceRows || verifiedScienceData.by_region || [];
   const regions = [
     'delhi_ncr',
     'mumbai_coastal',
@@ -163,9 +188,12 @@ export function getRegionalRegimeVerification() {
 
   return regions.map((rId) => {
     const sub = rows.filter((r) => r.region_id === rId);
-    const getRmse = (mKey) => {
-      const found = sub.find((r) => r.model === mKey);
-      return found ? Number(found.rmse.toFixed(3)) : 0;
+    const getRmse = (mKey, altKey) => {
+      const found = sub.find((r) => {
+        const k = r.system || r.model;
+        return k === mKey || (altKey && k === altKey);
+      });
+      return found ? Number(Number(found.rmse).toFixed(3)) : 0;
     };
 
     return {
@@ -176,8 +204,10 @@ export function getRegionalRegimeVerification() {
       AIFS: getRmse('ecmwf_aifs'),
       GFS: getRmse('ncep_gfs'),
       ICON: getRmse('dwd_icon'),
-      BLEND: getRmse('varuna_blend'),
-      samples: sub[0]?.sample_count || 3507,
+      EQUAL: getRmse('equal_blend'),
+      INV_RMSE: getRmse('static_inverse_rmse_blend', 'inv_rmse_blend'),
+      BLEND: getRmse('varuna_adaptive', 'varuna_blend'),
+      samples: sub[0]?.sample_count || sub[0]?.n || 3507,
     };
   });
 }

@@ -1,8 +1,8 @@
-dataset_split,model,rmse,mae,bias,correlation,sample_count
-held_out_test,ecmwf_ifs,1.0613,0.8052,-0.249,0.9763,4512
-held_out_test,ecmwf_aifs,1.6215,1.2326,0.8219,0.9717,4512
-held_out_test,ncep_gfs,2.2835,1.6769,0.9853,0.9336,4512
-held_out_test,dwd_icon,1.2855,1.0012,0.3679,0.9658,4512
-held_out_test,equal_blend,1.1183,0.8565,0.4815,0.9774,4512
-held_out_test,inv_rmse_blend,0.9837,0.7724,0.2748,0.9817,4512
-held_out_test,varuna_blend,0.8674,0.6539,0.1166,0.9837,4512
+system,scope,partition,seasons,n,rmse,mae,bias,pearson_r
+ecmwf_ifs,held_out_test,final 20% chronological,post_monsoon,4512,1.195,0.924,-0.561,0.973
+ecmwf_aifs,held_out_test,final 20% chronological,post_monsoon,4512,1.105,0.866,0.51,0.981
+ncep_gfs,held_out_test,final 20% chronological,post_monsoon,4512,2.32,1.874,0.674,0.93
+dwd_icon,held_out_test,final 20% chronological,post_monsoon,4512,1.131,0.876,0.056,0.969
+equal_blend,held_out_test,final 20% chronological,post_monsoon,4512,0.96,0.759,0.17,0.978
+static_inverse_rmse_blend,held_out_test,final 20% chronological,post_monsoon,4512,0.787,0.622,0.082,0.984
+varuna_adaptive,held_out_test,final 20% chronological,post_monsoon,4512,0.78,0.612,0.066,0.984

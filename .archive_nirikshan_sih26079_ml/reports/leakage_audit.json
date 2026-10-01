@@ -1,0 +1,8 @@
+{
+  "status": "PASS",
+  "total_features_checked": 127,
+  "violations_count": 0,
+  "violations": [],
+  "schema_file": "C:\\Users\\prakh\\Desktop\\varuna-frontend\\ml\\artifacts\\feature_schema.json",
+  "timestamp": "2026-09-30T12:55:37.190221+00:00"
+}

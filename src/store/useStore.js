@@ -23,7 +23,15 @@ export const useStore = create((set, get) => ({
   selectedRegionId: 'delhi_ncr',
   selectedVariable: 'rainfall',
   selectedLeadTime: '48h',
-  selectedModelLayer: 'blend', // 'blend' | 'ifs' | 'aifs' | 'gfs'
+  selectedModelLayer: 'blend', // 'blend' | 'ifs' | 'aifs' | 'gfs' | 'icon'
+
+  // Regional forecasts from authoritative API
+  regionalForecasts: null,
+  regionalForecastsLoading: false,
+  regionalForecastsError: null,
+  setRegionalForecasts: (regionalForecasts) => set({ regionalForecasts }),
+  setRegionalForecastsLoading: (regionalForecastsLoading) => set({ regionalForecastsLoading }),
+  setRegionalForecastsError: (regionalForecastsError) => set({ regionalForecastsError }),
 
   // Model Cycle Timestamps (Section 14)
   initializationTime: '2026-09-26T00:00:00Z',
@@ -33,8 +41,15 @@ export const useStore = create((set, get) => ({
     return new Date(init.getTime() + hours * 3600 * 1000).toISOString();
   },
 
-  // Drawer status
+  // Drawer status (Details, Navigation, Map Controls)
   drawerOpen: false,
+  navDrawerOpen: false,
+  setNavDrawerOpen: (open) => set({ navDrawerOpen: open }),
+  toggleNavDrawer: () => set((s) => ({ navDrawerOpen: !s.navDrawerOpen })),
+
+  mapControlsDrawerOpen: false,
+  setMapControlsDrawerOpen: (open) => set({ mapControlsDrawerOpen: open }),
+  toggleMapControlsDrawer: () => set((s) => ({ mapControlsDrawerOpen: !s.mapControlsDrawerOpen })),
 
   // Map state
   basemap: 'satellite', // 'satellite' | 'dark' | 'nasa_gibs' | 'nasa_night'
@@ -146,23 +161,35 @@ export const useStore = create((set, get) => ({
 
   // Helper selector for active forecast calculation
   getCurrentForecast: () => {
-    const { selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode } = get();
+    const { selectedRegionId, regionalForecasts, selectedVariable, selectedLeadTime, effectiveMode } = get();
+    if (regionalForecasts && regionalForecasts.length > 0 && regionalForecasts[0]?.forecast?.variable?.id === selectedVariable) {
+      const match = regionalForecasts.find((r) => r.id === selectedRegionId);
+      if (match?.forecast) return match.forecast;
+    }
     return getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode);
   },
 
   // Helper selector for region list with forecast attached
   getRegionalForecasts: () => {
-    const { selectedVariable, selectedLeadTime, filters, effectiveMode } = get();
-    let list = REGIONS.map((region) => {
-      const forecast = getDeterministicForecast(region.id, selectedVariable, selectedLeadTime, effectiveMode);
-      return {
-        ...region,
-        forecast,
-      };
-    });
+    const { filters, regionalForecasts, selectedVariable, selectedLeadTime, effectiveMode } = get();
+    let list;
+    if (regionalForecasts && regionalForecasts.length > 0 && regionalForecasts[0]?.forecast?.variable?.id === selectedVariable) {
+      list = regionalForecasts.map((item) => ({ ...item }));
+    } else {
+      list = REGIONS.map((region) => {
+        // Fallback placeholder before initial load resolves
+        const forecast = effectiveMode === 'DEMO'
+          ? getDeterministicForecast(region.id, selectedVariable, selectedLeadTime, effectiveMode)
+          : null;
+        return {
+          ...region,
+          forecast,
+        };
+      });
+    }
 
     if (filters.alertLevel !== 'ALL') {
-      list = list.filter((r) => r.forecast.alertLevel.toUpperCase() === filters.alertLevel);
+      list = list.filter((r) => r.forecast && r.forecast.alertLevel?.toUpperCase() === filters.alertLevel);
     }
 
     if (filters.searchQuery) {
@@ -172,18 +199,18 @@ export const useStore = create((set, get) => ({
           r.name.toLowerCase().includes(q) ||
           r.state.toLowerCase().includes(q) ||
           r.zone.toLowerCase().includes(q) ||
-          r.regime.toLowerCase().includes(q)
+          r.regime?.toLowerCase().includes(q)
       );
     }
 
     if (filters.sort === 'FORECAST') {
-      list.sort((a, b) => b.forecast.forecastValue - a.forecast.forecastValue);
+      list.sort((a, b) => (b.forecast?.forecastValue ?? -Infinity) - (a.forecast?.forecastValue ?? -Infinity));
     } else if (filters.sort === 'NAME') {
       list.sort((a, b) => a.name.localeCompare(b.name));
     } else {
       // Sort by alert severity: Critical > High > Moderate > Low
-      const order = { Critical: 4, High: 3, Moderate: 2, Low: 1 };
-      list.sort((a, b) => (order[b.forecast.alertLevel] || 0) - (order[a.forecast.alertLevel] || 0));
+      const order = { Critical: 4, High: 3, Moderate: 2, Low: 1, Nominal: 1 };
+      list.sort((a, b) => (order[b.forecast?.alertLevel] || 0) - (order[a.forecast?.alertLevel] || 0));
     }
 
     return list;

@@ -2,15 +2,15 @@ import { useEffect, useRef } from 'react';
 import { Marker, Popup } from 'maplibre-gl';
 import { useMap } from './mapContext';
 import { useStore } from '../../store/useStore';
-import { REGIONS, getDeterministicForecast, RISK_TIERS } from '../../data/mockData.js';
+import { REGIONS, RISK_TIERS } from '../../data/mockData.js';
 
 export default function ForecastLayer() {
   const { map, mapReady, flyTo } = useMap() || {};
   const selectedRegionId = useStore((s) => s.selectedRegionId);
   const selectRegion = useStore((s) => s.selectRegion);
-  const selectedVariable = useStore((s) => s.selectedVariable);
-  const selectedLeadTime = useStore((s) => s.selectedLeadTime);
   const selectedModelLayer = useStore((s) => s.selectedModelLayer);
+  const selectedVariable = useStore((s) => s.selectedVariable);
+  const regionalForecasts = useStore((s) => s.regionalForecasts);
 
   const markersRef = useRef([]);
   const popupRef = useRef(null);
@@ -32,16 +32,28 @@ export default function ForecastLayer() {
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
-    REGIONS.forEach((region) => {
-      const forecast = getDeterministicForecast(region.id, selectedVariable, selectedLeadTime);
+    const isVariableMatch = regionalForecasts && regionalForecasts.length > 0 && regionalForecasts[0]?.forecast?.variable?.id === selectedVariable;
+    const activeList = isVariableMatch
+      ? regionalForecasts
+      : REGIONS.map((r) => ({ ...r, forecast: null }));
+
+    activeList.forEach((item) => {
+      const region = item;
+      const forecast = item.forecast;
       const isSelected = region.id === selectedRegionId;
-      const color = RISK_TIERS[forecast.alertLevel] || '#D97706';
+      const color = forecast ? (RISK_TIERS[forecast.alertLevel] || '#16A34A') : '#64748B';
 
       // Pick display value according to selected model layer
-      let displayVal = forecast.forecastValue;
-      if (selectedModelLayer === 'ifs') displayVal = forecast.models.ifs.value;
-      if (selectedModelLayer === 'aifs') displayVal = forecast.models.aifs.value;
-      if (selectedModelLayer === 'gfs') displayVal = forecast.models.gfs.value;
+      let displayVal = forecast ? forecast.forecastValue : '—';
+      const unit = forecast ? forecast.unit : '';
+      if (forecast) {
+        if (selectedModelLayer === 'ifs') displayVal = forecast.models?.ifs?.value ?? displayVal;
+        if (selectedModelLayer === 'aifs') displayVal = forecast.models?.aifs?.value ?? displayVal;
+        if (selectedModelLayer === 'gfs') displayVal = forecast.models?.gfs?.value ?? displayVal;
+        if (selectedModelLayer === 'icon' || selectedModelLayer === 'dwd_icon') {
+          displayVal = (forecast.models?.icon?.value ?? forecast.models?.dwd_icon?.value) ?? displayVal;
+        }
+      }
 
       const el = document.createElement('div');
       el.className = 'varuna-map-marker';
@@ -67,7 +79,7 @@ export default function ForecastLayer() {
             transition: transform 0.15s ease;
           ">
             <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: ${color};"></span>
-            <span>${displayVal} <span style="font-size: 9px; opacity: 0.8;">${forecast.unit}</span></span>
+            <span>${displayVal} <span style="font-size: 9px; opacity: 0.8;">${unit}</span></span>
           </div>
           <div style="
             font-family: 'Inter', sans-serif;
@@ -88,6 +100,20 @@ export default function ForecastLayer() {
 
       el.addEventListener('mouseenter', () => {
         if (popupRef.current) popupRef.current.remove();
+        if (!forecast) {
+          popupRef.current = new Popup({ offset: 25, closeButton: false })
+            .setLngLat([region.lng, region.lat])
+            .setHTML(`
+              <div style="padding: 10px; font-family: 'Inter', sans-serif; font-size: 12px; min-width: 180px;">
+                <div style="font-weight: 700; color: #1A1A17; margin-bottom: 2px;">${region.name}</div>
+                <div style="font-size: 10px; color: #75756C; margin-bottom: 6px;">${region.zone}</div>
+                <div style="color: #64748B; font-size: 11px;">Forecast currently unavailable from backend</div>
+              </div>
+            `)
+            .addTo(map);
+          return;
+        }
+
         popupRef.current = new Popup({ offset: 25, closeButton: false })
           .setLngLat([region.lng, region.lat])
           .setHTML(`
@@ -100,18 +126,22 @@ export default function ForecastLayer() {
               </div>
               <div style="display: flex; justify-content: space-between; margin-bottom: 2px; font-size: 11px;">
                 <span style="color: #75756C;">ECMWF AIFS:</span>
-                <span style="font-family: 'JetBrains Mono', monospace;">${forecast.models.aifs.value} ${forecast.unit} (${forecast.models.aifs.weight}%)</span>
+                <span style="font-family: 'JetBrains Mono', monospace;">${forecast.models?.aifs?.value ?? '—'} ${forecast.unit} (${forecast.models?.aifs?.weight ?? 0}%)</span>
               </div>
               <div style="display: flex; justify-content: space-between; margin-bottom: 2px; font-size: 11px;">
                 <span style="color: #75756C;">NOAA GFS:</span>
-                <span style="font-family: 'JetBrains Mono', monospace;">${forecast.models.gfs.value} ${forecast.unit} (${forecast.models.gfs.weight}%)</span>
+                <span style="font-family: 'JetBrains Mono', monospace;">${forecast.models?.gfs?.value ?? '—'} ${forecast.unit} (${forecast.models?.gfs?.weight ?? 0}%)</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 2px; font-size: 11px;">
+                <span style="color: #75756C;">ECMWF IFS:</span>
+                <span style="font-family: 'JetBrains Mono', monospace;">${forecast.models?.ifs?.value ?? '—'} ${forecast.unit} (${forecast.models?.ifs?.weight ?? 0}%)</span>
               </div>
               <div style="display: flex; justify-content: space-between; font-size: 11px;">
-                <span style="color: #75756C;">ECMWF IFS:</span>
-                <span style="font-family: 'JetBrains Mono', monospace;">${forecast.models.ifs.value} ${forecast.unit} (${forecast.models.ifs.weight}%)</span>
+                <span style="color: #75756C;">DWD ICON:</span>
+                <span style="font-family: 'JetBrains Mono', monospace;">${forecast.models?.icon?.value ?? '—'} ${forecast.unit} (${forecast.models?.icon?.weight ?? 0}%)</span>
               </div>
               <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid #E8E5DE; font-size: 10px; color: #16A34A; font-weight: 600;">
-                Click to inspect adaptive weighting
+                Click to inspect weighting
               </div>
             </div>
           `)
@@ -144,7 +174,7 @@ export default function ForecastLayer() {
         popupRef.current = null;
       }
     };
-  }, [map, mapReady, selectedRegionId, selectedVariable, selectedLeadTime, selectedModelLayer, selectRegion]);
+  }, [map, mapReady, selectedRegionId, selectedModelLayer, regionalForecasts, selectedVariable, selectRegion]);
 
   return null;
 }

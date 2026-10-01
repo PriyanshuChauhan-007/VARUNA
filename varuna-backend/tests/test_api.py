@@ -229,3 +229,60 @@ def test_weights_replay_rejects_non_temperature_honestly(client, provider_down):
     assert r.json()["available"] is False
     assert "temperature" in r.json()["detail"]
 
+
+def test_analyze_post_contract_temperature(client, patched_live, live_series):
+    patched_live(live_series)
+    r = client.post("/api/analyze", json={"region": "delhi_ncr", "variable": "temperature", "lead_time_hours": 48})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["region"] == "delhi_ncr"
+    assert data["variable"] == "temperature"
+    assert data["lead_time_hours"] == 48
+    assert "valid_time" in data
+    assert data["data_mode"] in ["LIVE", "CACHED", "REPLAY"]
+    assert "models" in data
+    assert len(data["models"]) == 4
+    assert "weights" in data
+    assert sum(data["weights"].values()) == 100
+    assert data["weighting_scheme"] == "adaptive_xgboost"
+    assert isinstance(data["predicted_errors"], dict)
+    assert len(data["predicted_errors"]) == 4
+    assert isinstance(data["blend"], (int, float))
+    assert isinstance(data["ensemble_spread"], (int, float))
+    assert data["ensemble_spread"] >= 0.0
+    assert "summary" in data and len(data["summary"]) > 20
+    assert "VARUNA" in data["summary"]
+
+
+def test_analyze_post_rainfall_fallback(client, patched_live, live_series):
+    patched_live(live_series)
+    r = client.post("/api/analyze", json={"region": "delhi_ncr", "variable": "rainfall", "lead_time_hours": 48})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["variable"] == "rainfall"
+    assert data["weighting_scheme"] == "equal_fallback_untrained"
+    assert data["weights"] == {"ecmwf_ifs": 25, "ecmwf_aifs": 25, "ncep_gfs": 25, "dwd_icon": 25}
+    assert data["predicted_errors"] is None
+    assert "equal-weight" in data["summary"].lower()
+
+
+def test_analyze_get_contract(client, patched_live, live_series):
+    patched_live(live_series)
+    r = client.get("/api/analyze?region=delhi_ncr&variable=wind_speed&lead_time_hours=24")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["variable"] == "wind_speed"
+    assert data["lead_time_hours"] == 24
+    assert data["weighting_scheme"] == "equal_fallback_untrained"
+
+
+def test_analyze_unknown_region_422(client):
+    r = client.post("/api/analyze", json={"region": "non_existent_zone", "variable": "temperature", "lead_time_hours": 48})
+    assert r.status_code == 422
+
+
+def test_analyze_unknown_variable_422(client):
+    r = client.post("/api/analyze", json={"region": "delhi_ncr", "variable": "earthquake_intensity", "lead_time_hours": 48})
+    assert r.status_code == 422
+
+

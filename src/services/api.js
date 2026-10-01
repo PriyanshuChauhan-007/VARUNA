@@ -68,31 +68,31 @@ function formatChartTime(isoString, leadHours) {
  */
 function determineAlertLevel(variableId, value) {
   if (value === null || value === undefined) {
-    return { level: 'NOMINAL', reason: 'Awaiting sensor evaluation' };
+    return { level: 'Low', reason: 'Awaiting sensor evaluation' };
   }
   if (variableId === 'rainfall') {
-    if (value >= 115.6) return { level: 'CRITICAL', reason: 'IMD Very Heavy Rainfall (≥115.6 mm/24h)' };
-    if (value >= 64.5) return { level: 'HIGH', reason: 'IMD Heavy Rainfall Warning (≥64.5 mm/24h)' };
-    if (value >= 15.6) return { level: 'MODERATE', reason: 'Moderate Monsoon Rain Band' };
-    return { level: 'NOMINAL', reason: 'Precipitation within baseline range' };
+    if (value >= 115.6) return { level: 'Critical', reason: 'IMD Very Heavy Rainfall (≥115.6 mm/24h)' };
+    if (value >= 64.5) return { level: 'High', reason: 'IMD Heavy Rainfall Warning (≥64.5 mm/24h)' };
+    if (value >= 15.6) return { level: 'Moderate', reason: 'Moderate Monsoon Rain Band' };
+    return { level: 'Low', reason: 'Precipitation within baseline range' };
   }
   if (variableId === 'temperature') {
-    if (value >= 45.0) return { level: 'CRITICAL', reason: 'IMD Severe Heatwave Criteria (≥45.0 °C)' };
-    if (value >= 40.0) return { level: 'HIGH', reason: 'IMD Heatwave Advisory (≥40.0 °C)' };
-    if (value <= 4.0) return { level: 'HIGH', reason: 'IMD Cold Wave Advisory (≤4.0 °C)' };
-    return { level: 'NOMINAL', reason: 'Thermal profile within standard seasonal envelope' };
+    if (value >= 45.0) return { level: 'Critical', reason: 'IMD Severe Heatwave Criteria (≥45.0 °C)' };
+    if (value >= 40.0) return { level: 'High', reason: 'IMD Heatwave Advisory (≥40.0 °C)' };
+    if (value <= 4.0) return { level: 'High', reason: 'IMD Cold Wave Advisory (≤4.0 °C)' };
+    return { level: 'Low', reason: 'Thermal profile within standard seasonal envelope' };
   }
   if (variableId === 'wind_speed') {
-    if (value >= 62.0) return { level: 'CRITICAL', reason: 'IMD Gale Force Warning (≥62 km/h)' };
-    if (value >= 45.0) return { level: 'HIGH', reason: 'IMD Squally Weather Advisory (≥45 km/h)' };
-    return { level: 'NOMINAL', reason: 'Surface wind within standard boundary layer limits' };
+    if (value >= 62.0) return { level: 'Critical', reason: 'IMD Gale Force Warning (≥62 km/h)' };
+    if (value >= 45.0) return { level: 'High', reason: 'IMD Squally Weather Advisory (≥45 km/h)' };
+    return { level: 'Low', reason: 'Surface wind within standard boundary layer limits' };
   }
   if (variableId === 'pressure') {
-    if (value < 990.0) return { level: 'CRITICAL', reason: 'Severe Cyclonic Low-Pressure Core (<990 hPa)' };
-    if (value < 1000.0) return { level: 'HIGH', reason: 'Tropical Depression Barometric Drop (<1000 hPa)' };
-    return { level: 'NOMINAL', reason: 'Synoptic surface pressure stable' };
+    if (value < 990.0) return { level: 'Critical', reason: 'Severe Cyclonic Low-Pressure Core (<990 hPa)' };
+    if (value < 1000.0) return { level: 'High', reason: 'Tropical Depression Barometric Drop (<1000 hPa)' };
+    return { level: 'Low', reason: 'Synoptic surface pressure stable' };
   }
-  return { level: 'NOMINAL', reason: 'Standard meteorological parameters' };
+  return { level: 'Low', reason: 'Standard meteorological parameters' };
 }
 
 /**
@@ -187,55 +187,6 @@ export function normalizeForecastResponse(raw, requestedLeadTime) {
     regime: regime.name || baseRegion.regime,
   };
 
-  // Model breakdowns
-  const models = {
-    ifs: {
-      id: 'ecmwf_ifs',
-      name: CANONICAL_MODEL_NAMES.ecmwf_ifs.name,
-      type: CANONICAL_MODEL_NAMES.ecmwf_ifs.type,
-      value: members.ecmwf_ifs ?? 0.0,
-      weight: weights.ecmwf_ifs ?? 0,
-      leadTimeHours: actualLeadH,
-      unit,
-    },
-    aifs: {
-      id: 'ecmwf_aifs',
-      name: CANONICAL_MODEL_NAMES.ecmwf_aifs.name,
-      type: CANONICAL_MODEL_NAMES.ecmwf_aifs.type,
-      value: members.ecmwf_aifs ?? 0.0,
-      weight: weights.ecmwf_aifs ?? 0,
-      leadTimeHours: actualLeadH,
-      unit,
-    },
-    gfs: {
-      id: 'ncep_gfs',
-      name: CANONICAL_MODEL_NAMES.ncep_gfs.name,
-      type: CANONICAL_MODEL_NAMES.ncep_gfs.type,
-      value: members.ncep_gfs ?? 0.0,
-      weight: weights.ncep_gfs ?? 0,
-      leadTimeHours: actualLeadH,
-      unit,
-    },
-    icon: {
-      id: 'dwd_icon',
-      name: CANONICAL_MODEL_NAMES.dwd_icon.name,
-      type: CANONICAL_MODEL_NAMES.dwd_icon.type,
-      value: members.dwd_icon ?? 0.0,
-      weight: weights.dwd_icon ?? 0,
-      leadTimeHours: actualLeadH,
-      unit,
-    },
-    blend: {
-      id: 'varuna_blend',
-      name: 'VARUNA BLEND',
-      value: target.blend ?? 0.0,
-      leadTimeHours: actualLeadH,
-      unit,
-      rmseReductionPct: 34.7, // Verified held-out RMSE improvement vs IFS (1.195 -> 0.780)
-      sampleCount: 4512,
-    },
-  };
-
   // Identify top driving model from real adaptive weights
   const allWeightsEqual = weightValues.length > 0 && weightValues.every((w) => w === weightValues[0]);
 
@@ -247,6 +198,57 @@ export function normalizeForecastResponse(raw, requestedLeadTime) {
   const topWeight = weights[topKey] || 0;
 
   const isAdaptive = variable === 'temperature' && weighting_scheme === 'adaptive_xgboost' && !allWeightsEqual;
+
+  // Model breakdowns
+  const models = {
+    ifs: {
+      id: 'ecmwf_ifs',
+      name: CANONICAL_MODEL_NAMES.ecmwf_ifs.name,
+      type: CANONICAL_MODEL_NAMES.ecmwf_ifs.type,
+      value: members.ecmwf_ifs ?? 0.0,
+      weight: weights.ecmwf_ifs ?? 0,
+      leadTimeHours: actualLeadH,
+      unit,
+      predictedError: target.predicted_errors?.ecmwf_ifs ?? null,
+    },
+    aifs: {
+      id: 'ecmwf_aifs',
+      name: CANONICAL_MODEL_NAMES.ecmwf_aifs.name,
+      type: CANONICAL_MODEL_NAMES.ecmwf_aifs.type,
+      value: members.ecmwf_aifs ?? 0.0,
+      weight: weights.ecmwf_aifs ?? 0,
+      leadTimeHours: actualLeadH,
+      unit,
+      predictedError: target.predicted_errors?.ecmwf_aifs ?? null,
+    },
+    gfs: {
+      id: 'ncep_gfs',
+      name: CANONICAL_MODEL_NAMES.ncep_gfs.name,
+      type: CANONICAL_MODEL_NAMES.ncep_gfs.type,
+      value: members.ncep_gfs ?? 0.0,
+      weight: weights.ncep_gfs ?? 0,
+      leadTimeHours: actualLeadH,
+      unit,
+      predictedError: target.predicted_errors?.ncep_gfs ?? null,
+    },
+    icon: {
+      id: 'dwd_icon',
+      name: CANONICAL_MODEL_NAMES.dwd_icon.name,
+      type: CANONICAL_MODEL_NAMES.dwd_icon.type,
+      value: members.dwd_icon ?? 0.0,
+      weight: weights.dwd_icon ?? 0,
+      leadTimeHours: actualLeadH,
+      unit,
+      predictedError: target.predicted_errors?.dwd_icon ?? null,
+    },
+    blend: {
+      id: 'varuna_blend',
+      name: 'VARUNA BLEND',
+      value: target.blend ?? 0.0,
+      leadTimeHours: actualLeadH,
+      unit,
+    },
+  };
 
   const whyThisBlend = {
     topModel: isAdaptive
@@ -308,6 +310,7 @@ export function normalizeForecastResponse(raw, requestedLeadTime) {
     horizonNote: horizon_note,
     weightingScheme: weighting_scheme,
     weightingReason: weighting_reason,
+    predictedErrors: target.predicted_errors || null,
     provenance: { attribution, models_used, degraded, validated, weighting_scheme, weighting_reason },
   };
 }
@@ -365,6 +368,52 @@ export async function fetchExtremes({ region = 'delhi_ncr', leadTime = '48h' } =
 }
 
 /**
+ * Fetch explainability attribution and feature importances from /api/explain.
+ */
+export async function fetchExplain({ region = 'delhi_ncr', variable = 'temperature', leadTime = '48h' } = {}) {
+  const leadH = typeof leadTime === 'string'
+    ? (leadTime.endsWith('d') ? parseInt(leadTime, 10) * 24 : parseInt(leadTime, 10))
+    : (leadTime || 48);
+
+  const params = new URLSearchParams({
+    region,
+    variable,
+    lead_time_hours: String(leadH),
+  });
+
+  const response = await fetch(`${API_BASE}/api/explain?${params.toString()}`);
+  if (!response.ok) throw new Error(`Explain fetch failed: HTTP ${response.status}`);
+  return response.json();
+}
+
+/**
+ * Trigger fresh adaptive ensemble analysis via POST /api/analyze.
+ * Recomputes adaptive weighting and blends NWP members for the specified context.
+ */
+export async function fetchAnalyze({ region = 'delhi_ncr', variable = 'temperature', leadTime = '48h' } = {}) {
+  const leadH = typeof leadTime === 'string'
+    ? (leadTime.endsWith('d') ? parseInt(leadTime, 10) * 24 : parseInt(leadTime, 10))
+    : (leadTime || 48);
+
+  const response = await fetch(`${API_BASE}/api/analyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      region,
+      variable,
+      lead_time_hours: leadH,
+    }),
+  });
+  if (!response.ok) throw new Error(`VARUNA Analysis request failed: HTTP ${response.status}`);
+  return response.json();
+}
+
+/**
+ * Backward-compatible alias for fetchAnalyze.
+ */
+export const fetchAiAnalysis = fetchAnalyze;
+
+/**
  * Health check from /api/health.
  */
 export async function fetchHealth() {
@@ -372,3 +421,57 @@ export async function fetchHealth() {
   if (!response.ok) throw new Error(`Health check failed: HTTP ${response.status}`);
   return response.json();
 }
+
+/**
+ * Concurrency-controlled promise executor.
+ */
+async function runWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let index = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const i = index++;
+      try {
+        results[i] = await fn(items[i], i);
+      } catch (err) {
+        results[i] = { error: err.message || 'Request failed' };
+      }
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Fetch operational regional forecasts for all 12 configured regions from /api/forecast.
+ * Uses controlled parallel requests to keep the UI responsive and prevent backend contention.
+ */
+export async function fetchRegionalForecasts({ variable = 'temperature', leadTime = '48h' } = {}) {
+  return runWithConcurrency(REGIONS, 1, async (region) => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const forecast = await fetchForecast({
+          region: region.id,
+          variable,
+          leadTime,
+        });
+        return {
+          ...region,
+          forecast,
+          error: null,
+        };
+      } catch (err) {
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 60));
+          continue;
+        }
+        return {
+          ...region,
+          forecast: null,
+          error: err.message || 'API unavailable',
+        };
+      }
+    }
+  });
+}
+

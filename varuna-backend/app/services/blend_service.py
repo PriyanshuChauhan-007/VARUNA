@@ -277,6 +277,7 @@ def _live_timeline(region_id: str, variable: str) -> dict:
             "models_used": models_used,
             "degraded": degraded,
             "regime_index": r["regime_index"],
+            "predicted_errors": preds,
         })
 
     if not entries:
@@ -717,3 +718,86 @@ def health_payload() -> dict:
         "time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "model_bundle_loaded": _bundle() is not None,
     }
+
+
+def analyze_payload(region_id: str, variable: str, lead_time_hours: int) -> dict:
+    if region_id not in REGIONS:
+        raise ServiceUnavailable(f"Unknown region '{region_id}'.")
+    if variable not in VARIABLES:
+        raise ServiceUnavailable(f"Unknown variable '{variable}'.")
+
+    fc = forecast_payload(region_id, variable, lead_time_hours)
+    timeline = fc.get("timeline", [])
+    if not timeline:
+        raise ServiceUnavailable("No forecast timeline available for analysis.")
+
+    target = min(timeline, key=lambda p: abs(p.get("lead_time_hours", 0) - lead_time_hours))
+
+    valid_time = target.get("time")
+    models = target.get("models", {})
+    weights = target.get("weights", {})
+    blend = target.get("blend")
+    predicted_errors = target.get("predicted_errors")
+
+    vals = [v for v in models.values() if v is not None]
+    spread = round(max(vals) - min(vals), 3) if vals else 0.0
+
+    unit = VARIABLES[variable]["unit"]
+    region_name = REGIONS[region_id]["name"]
+    var_labels = {
+        "temperature": "Temperature",
+        "rainfall": "Rainfall",
+        "wind_speed": "Wind Speed",
+        "pressure": "Surface Pressure",
+    }
+    var_label = var_labels.get(variable, variable.replace("_", " ").title())
+
+    scheme = fc.get("weighting_scheme", "equal_fallback_untrained")
+    is_adaptive = (variable == "temperature" and scheme == "adaptive_xgboost" and predicted_errors is not None)
+
+    if is_adaptive and weights:
+        best_key = max(weights, key=lambda k: weights.get(k, 0))
+        model_display = {
+            "ecmwf_ifs": "ECMWF IFS",
+            "ecmwf_aifs": "ECMWF AIFS",
+            "ncep_gfs": "NOAA GFS",
+            "dwd_icon": "DWD ICON",
+        }
+        best_name = model_display.get(best_key, best_key)
+        best_weight = weights[best_key]
+        best_err = f"{predicted_errors[best_key]:.2f} °C" if (predicted_errors and best_key in predicted_errors) else "lowest predicted error"
+        summary = (
+            f"VARUNA adaptive ensemble allocated highest weight to {best_name} ({best_weight}%) "
+            f"based on XGBoost predicted member error ({best_err}) over {region_name} at +{lead_time_hours}h lead. "
+            f"Ensemble spread across 4 NWP centers is {spread:.1f} °C. "
+            f"Resulting adaptive blend: {blend:.1f} °C."
+        )
+    else:
+        summary = (
+            f"Operational equal-weight consensus (25% per member) applied across all 4 NWP centers. "
+            f"Adaptive XGBoost meta-model is not validated for {var_label.lower()}; equal-weight fallback used. "
+            f"Ensemble spread is {spread:.1f} {unit}. "
+            f"Resulting consensus blend: {blend:.1f} {unit}."
+        )
+
+    return {
+        "region": region_id,
+        "region_name": region_name,
+        "variable": variable,
+        "variable_label": var_label,
+        "unit": unit,
+        "lead_time_hours": lead_time_hours,
+        "valid_time": valid_time,
+        "data_mode": fc.get("data_mode", MODE_LIVE),
+        "models": models,
+        "weights": weights,
+        "predicted_errors": predicted_errors,
+        "blend": blend,
+        "ensemble_spread": spread,
+        "weighting_scheme": scheme,
+        "weighting_reason": fc.get("weighting_reason"),
+        "validated": fc.get("validated", False),
+        "summary": summary,
+        "attribution": ATTRIBUTION,
+    }
+

@@ -2,11 +2,15 @@
 
 import numpy as np
 import pytest
+from src.common import ML_ROOT
 from src.features.build import model_feature_columns
 from src.inference.predictor import get_predictor, predict_forecast
 from src.models.calibration import ForecastCalibrator, compute_ece
 
+MODELS_EXIST = (ML_ROOT / "models" / "nirikshan_bust_model.joblib").exists()
 
+
+@pytest.mark.skipif(not MODELS_EXIST, reason="Nirikshan model artifact (nirikshan_bust_model.joblib) not present on disk")
 def test_probability_between_0_and_1():
     """Verify raw and calibrated bust probabilities are strictly bounded between 0 and 1."""
     predictor = get_predictor()
