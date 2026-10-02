@@ -425,7 +425,7 @@ export async function fetchHealth() {
 /**
  * Concurrency-controlled promise executor.
  */
-async function runWithConcurrency(items, limit, fn) {
+export async function runWithConcurrency(items, limit, fn) {
   const results = new Array(items.length);
   let index = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -443,11 +443,11 @@ async function runWithConcurrency(items, limit, fn) {
 }
 
 /**
- * Fetch operational regional forecasts for all 12 configured regions from /api/forecast.
- * Uses controlled parallel requests to keep the UI responsive and prevent backend contention.
+ * Fetch operational regional forecasts across all 45 configured regions from /api/forecast.
+ * Uses controlled parallel requests (concurrency 4) to keep the UI responsive and prevent backend contention.
  */
 export async function fetchRegionalForecasts({ variable = 'temperature', leadTime = '48h' } = {}) {
-  return runWithConcurrency(REGIONS, 1, async (region) => {
+  return runWithConcurrency(REGIONS, 4, async (region) => {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const forecast = await fetchForecast({

@@ -42,7 +42,7 @@ def test_health(client):
 
 def test_regions_lists_all_twelve_with_flags(client):
     body = client.get("/api/regions").json()["regions"]
-    assert len(body) == 12
+    assert len(body) == 45
     by_id = {r["id"]: r for r in body}
     assert set(by_id) == set(REGIONS)
     assert by_id["delhi_ncr"]["validated"] is True
