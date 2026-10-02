@@ -37,3 +37,6 @@ backend/cache/*.sqlite
 varuna-backend/cache/
 varuna-backend/**/__pycache__/
 
+
+.vercel
+.env*

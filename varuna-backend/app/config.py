@@ -190,7 +190,8 @@ CACHE_TTL_LIVE_S = 30 * 60
 CORS_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    *([o.strip() for o in os.environ.get("VARUNA_CORS_ORIGINS", "").split(",") if o.strip()]),
+    "https://varuna-rose.vercel.app",
+    *([o.strip().rstrip("/") for o in os.environ.get("VARUNA_CORS_ORIGINS", "").split(",") if o.strip()]),
 ]
 
 ATTRIBUTION = (
