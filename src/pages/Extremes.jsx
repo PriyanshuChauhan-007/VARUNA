@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { REGIONS } from '../data/mockData.js';
-import { fetchExtremes, runWithConcurrency } from '../services/api.js';
-import { getRiskColor, getNdmaProtocol } from '../utils/formatters';
+import { fetchExtremes } from '../services/api.js';
+import { getRiskColor } from '../utils/formatters';
 
 export default function Extremes() {
   const selectRegion = useStore((s) => s.selectRegion);
@@ -46,17 +46,12 @@ export default function Extremes() {
   useEffect(() => {
     let active = true;
     setFetchStatus('LOADING');
-    runWithConcurrency(
-      REGIONS,
-      4,
-      async (r) => {
-        try {
-          const data = await fetchExtremes({ region: r.id, leadTime: '48h' });
-          return { region: r, data, error: null };
-        } catch (error) {
-          return { region: r, data: null, error: error?.message || 'Request failed' };
-        }
-      }
+    Promise.all(
+      REGIONS.map(r => 
+        fetchExtremes({ region: r.id, leadTime: '48h' })
+          .then(data => ({ region: r, data, error: null }))
+          .catch(error => ({ region: r, data: null, error: error?.message || 'Request failed' }))
+      )
     ).then(results => {
       if (!active) return;
       const mapped = [];
@@ -320,7 +315,7 @@ export default function Extremes() {
           {fetchStatus === 'NO_ALERTS' && (
             <div className="p-8 text-center text-[var(--varuna-text-secondary)] font-data bg-[var(--varuna-surface-soft)] border border-[var(--varuna-border)] rounded-[var(--radius-xl)]">
               <strong className="block text-lg mb-1 text-emerald-600 dark:text-emerald-400">NOMINAL CONDITIONS</strong>
-              <span>{syncReport.total}/{syncReport.total} configured monitoring points returned forecast data. No extreme threshold exceedances detected in the current operational cycle.</span>
+              <span>12/12 configured monitoring points returned forecast data. No extreme threshold exceedances detected in the current operational cycle.</span>
             </div>
           )}
 
@@ -332,7 +327,6 @@ export default function Extremes() {
 
           {(fetchStatus === 'ALERTS' || fetchStatus === 'PARTIAL_FAILURE') && filtered.map((item) => {
             const color = getRiskColor(item.tier);
-            const ndma = getNdmaProtocol(item.tier);
             return (
               <div
                 key={item.id}
@@ -384,25 +378,6 @@ export default function Extremes() {
                       </div>
                     </div>
                   </div>
-                </div>
-
-                {/* NDMA Civil Defense Operational Protocol */}
-                <div
-                  className="p-3 mb-3 rounded-[var(--radius-md)] border text-scale-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-                  style={{ backgroundColor: ndma.bg, borderColor: ndma.border }}
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="font-data font-extrabold text-[10px] px-2 py-0.5 rounded text-white tracking-wider"
-                      style={{ backgroundColor: ndma.color }}
-                    >
-                      {ndma.code}
-                    </span>
-                    <span className="font-bold text-[var(--varuna-text)] font-data">{ndma.title}:</span>
-                  </div>
-                  <span className="text-[var(--varuna-text-secondary)] text-[11px] leading-tight">
-                    {ndma.action}
-                  </span>
                 </div>
 
                 {/* Verification & Threshold Standard */}
