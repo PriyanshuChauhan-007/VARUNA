@@ -39,9 +39,13 @@ MODE_REPLAY = "REPLAY"
 
 class ServiceUnavailable(RuntimeError):
 
-    def __init__(self, message: str, mode_tried: list[str] | None = None):
+    def __init__(self, message: str, mode_tried: list[str] | None = None,
+                 *, provider_http_status: int | None = None,
+                 provider_reason: str | None = None):
         super().__init__(message)
         self.mode_tried = mode_tried or []
+        self.provider_http_status = provider_http_status
+        self.provider_reason = provider_reason
 
 
 _bundle_cache: dict | None = None
@@ -125,22 +129,38 @@ def _load_replay() -> dict:
 def _acquire_live(region_id: str) -> tuple[dict, str]:
     region = REGIONS[region_id]
     tried: list[str] = []
+    provider_status: int | None = None
+    provider_reason: str | None = None
     try:
         series, mode = get_live_forecast(region["lat"], region["lon"])
         return series, mode
     except ProviderError as exc:
         tried.append(f"live:{exc}")
+        provider_status = getattr(exc, "http_status", None)
+        provider_reason = getattr(exc, "provider_reason", None)
     replay = _load_replay()
     if region_id in replay.get("timelines", {}):
-        return {"__replay__": replay}, MODE_REPLAY
+        return {
+            "__replay__": replay,
+            "__provider_status__": provider_status,
+            "__provider_reason__": provider_reason,
+        }, MODE_REPLAY
     raise ServiceUnavailable(
         "Forecast data unavailable: live provider unreachable, no cached copy, "
         "no replay archive for this region.",
         tried,
+        provider_http_status=provider_status,
+        provider_reason=provider_reason,
     )
 
 
-def _replay_timeline(region_id: str, lead: int) -> tuple[dict, str]:
+def _replay_timeline(
+    region_id: str,
+    lead: int,
+    *,
+    provider_http_status: int | None = None,
+    provider_reason: str | None = None,
+) -> tuple[dict, str]:
     replay = _load_replay()
     tl = replay.get("timelines", {}).get(region_id, {}).get(str(lead))
     if tl is None:
@@ -149,16 +169,29 @@ def _replay_timeline(region_id: str, lead: int) -> tuple[dict, str]:
             "replay archive has no timeline for this region/lead. Run the "
             "pipeline to build data/replay/timelines.json.",
             [MODE_REPLAY],
+            provider_http_status=provider_http_status,
+            provider_reason=provider_reason,
         )
     return {"__replay_timeline__": tl, "__replay_meta__": replay}, MODE_REPLAY
 
 
-def _live_timeline(region_id: str, variable: str) -> dict:
+def _live_timeline(region_id: str, variable: str, lead: int = 48) -> dict:
     region = REGIONS[region_id]
     series, data_mode = _acquire_live(region_id)
     if data_mode == MODE_REPLAY:
-        payload, mode = _replay_timeline(region_id, 48)
-        return _replay_timeline_entries(region_id, variable, 48, payload, mode)
+        provider_status = series.get("__provider_status__")
+        provider_reason = series.get("__provider_reason__")
+        replay_lead = lead if lead in LEAD_TIMES else 48
+        payload, mode = _replay_timeline(
+            region_id, replay_lead,
+            provider_http_status=provider_status,
+            provider_reason=provider_reason,
+        )
+        return _replay_timeline_entries(
+            region_id, variable, replay_lead, payload, mode,
+            provider_http_status=provider_status,
+            provider_reason=provider_reason,
+        )
 
     now = _now_hour()
     times = series["time"]
@@ -306,7 +339,9 @@ def _live_timeline(region_id: str, variable: str) -> dict:
 
 
 def _replay_timeline_entries(region_id: str, variable: str, lead: int,
-                             payload: dict, data_mode: str) -> dict:
+                             payload: dict, data_mode: str,
+                             *, provider_http_status: int | None = None,
+                             provider_reason: str | None = None) -> dict:
     region = REGIONS[region_id]
     tl = payload["__replay_timeline__"]
     meta = payload.get("__replay_meta__", {})
@@ -315,6 +350,8 @@ def _replay_timeline_entries(region_id: str, variable: str, lead: int,
             f"Replay archive only contains variable='temperature'; "
             f"'{variable}' is not available while the provider is offline.",
             [MODE_REPLAY],
+            provider_http_status=provider_http_status,
+            provider_reason=provider_reason,
         )
     bundle = _bundle()
     entries = []
@@ -380,8 +417,9 @@ def forecast_payload(region_id: str, variable: str, lead_time_hours: int | None)
         raise ServiceUnavailable(f"Unknown region '{region_id}'.")
     if variable not in VARIABLES:
         raise ServiceUnavailable(f"Unknown variable '{variable}'.")
+    lead = lead_time_hours if (lead_time_hours is not None and lead_time_hours in LEAD_TIMES) else 48
     if lead_time_hours is not None and lead_time_hours > FORECAST_HORIZON_CAP_H:
-        payload = _live_timeline(region_id, variable)
+        payload = _live_timeline(region_id, variable, lead=lead)
         payload["horizon_note"] = (
             f"Requested lead {lead_time_hours} h exceeds the {FORECAST_HORIZON_CAP_H} h "
             f"cap. {HORIZON_NOTE}"
@@ -389,14 +427,13 @@ def forecast_payload(region_id: str, variable: str, lead_time_hours: int | None)
         payload["requested_lead_time_hours"] = lead_time_hours
         return payload
 
-    if lead_time_hours in LEAD_TIMES:
-        region = REGIONS[region_id]
-        try:
-            get_live_forecast(region["lat"], region["lon"])
-        except ProviderError:
-            payload, mode = _replay_timeline(region_id, lead_time_hours)
-            return _replay_timeline_entries(region_id, variable, lead_time_hours, payload, mode)
-    return _live_timeline(region_id, variable)
+    # _live_timeline handles the full live → cache → replay fallback chain.
+    # No separate probe needed — _acquire_live inside _live_timeline will
+    # attempt get_live_forecast and fall back to replay if the provider is down.
+    payload = _live_timeline(region_id, variable, lead=lead)
+    if lead_time_hours is not None:
+        payload["requested_lead_time_hours"] = lead_time_hours
+    return payload
 
 
 def weights_payload(region_id: str, variable: str, lead_time_hours: int) -> dict:
@@ -434,14 +471,22 @@ def weights_payload(region_id: str, variable: str, lead_time_hours: int) -> dict
                     ctx_vals[v].append(val)
         elevation = series.get("elevation_m")
         ts = datetime.fromisoformat(times[idx].replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
-    except ProviderError:
+    except ProviderError as exc:
+        p_status = getattr(exc, "http_status", None)
+        p_reason = getattr(exc, "provider_reason", None)
         if variable != "temperature":
             raise ServiceUnavailable(
                 f"Replay archive only contains variable='temperature'; "
                 f"'{variable}' is not available while the provider is offline.",
                 [MODE_REPLAY],
+                provider_http_status=p_status,
+                provider_reason=p_reason,
             )
-        payload, data_mode = _replay_timeline(region_id, lead_time_hours)
+        payload, data_mode = _replay_timeline(
+            region_id, lead_time_hours,
+            provider_http_status=p_status,
+            provider_reason=p_reason,
+        )
         tl = payload["__replay_timeline__"]
         i = len(tl["times"]) // 2
         member_values = {k: tl["members"][k][i] for k in MODEL_KEYS}
