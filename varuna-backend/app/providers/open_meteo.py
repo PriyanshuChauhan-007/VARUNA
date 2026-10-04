@@ -238,9 +238,10 @@ def get_live_forecast(
     lat: float,
     lon: float,
     variables: list[str] | None = None,
-    forecast_days: int = 7,
+    forecast_days: int = 8,
 ) -> tuple[dict, str]:
-    forecast_days = max(1, min(forecast_days, FORECAST_HORIZON_CAP_H // 24))
+    # 8 forecast days are required to guarantee a full 168h lead horizon from any hour of the day
+    forecast_days = max(1, min(forecast_days, 8))
     variables = variables or VARIABLE_KEYS
     hourly = ",".join(VARIABLES[v]["openmeteo"] for v in variables)
     cache_key = f"live|{lat:.4f}|{lon:.4f}|{hourly}|{forecast_days}"

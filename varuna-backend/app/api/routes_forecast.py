@@ -41,3 +41,59 @@ def forecast(
             content["diagnostic"] = diagnostic
 
         return JSONResponse(status_code=503, content=content)
+
+
+from typing import Any
+from pydantic import BaseModel, Field
+
+
+class ProcessForecastItem(BaseModel):
+    region: str = Field(..., description="Region ID, e.g. delhi_ncr")
+    variable: str = Field("temperature", description="Variable key: temperature, rainfall, wind_speed, pressure")
+    lead_time_hours: int | None = Field(None, description="Requested lead time in hours")
+    series: dict[str, Any] = Field(..., description="Normalized Open-Meteo NWP member series")
+
+
+class ProcessForecastRequest(BaseModel):
+    # Single-item processing fields:
+    region: str | None = None
+    variable: str = "temperature"
+    lead_time_hours: int | None = None
+    series: dict[str, Any] | None = None
+    # Batch processing field:
+    batch: list[ProcessForecastItem] | None = None
+
+
+@router.post("/api/forecast/process")
+def forecast_process(req: ProcessForecastRequest):
+    """Process browser-acquired Open-Meteo forecast series through the VARUNA scientific pipeline."""
+    try:
+        if req.batch is not None and len(req.batch) > 0:
+            results = []
+            for item in req.batch:
+                res = svc.process_client_forecast(
+                    region_id=item.region,
+                    variable=item.variable,
+                    series=item.series,
+                    lead_time_hours=item.lead_time_hours,
+                )
+                results.append(res)
+            return {"results": results}
+
+        if not req.region or not req.series:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "Must provide either 'batch' list or both 'region' and 'series'"}
+            )
+
+        return svc.process_client_forecast(
+            region_id=req.region,
+            variable=req.variable,
+            series=req.series,
+            lead_time_hours=req.lead_time_hours,
+        )
+    except svc.ClientSeriesValidationError as exc:
+        return JSONResponse(status_code=422, content={"detail": str(exc), "status": "validation_error"})
+    except svc.ServiceUnavailable as exc:
+        return JSONResponse(status_code=503, content={"detail": str(exc), "status": "service_unavailable"})
+

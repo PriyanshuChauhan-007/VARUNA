@@ -14,6 +14,7 @@ from ..config import (
     FORECAST_HORIZON_CAP_H,
     HORIZON_NOTE,
     LEAD_TIMES,
+    OPERATIONAL_LEAD_HOURS,
     META_MODEL_PATH,
     MODEL_KEYS,
     PROVENANCE_JSON,
@@ -175,24 +176,103 @@ def _replay_timeline(
     return {"__replay_timeline__": tl, "__replay_meta__": replay}, MODE_REPLAY
 
 
-def _live_timeline(region_id: str, variable: str, lead: int = 48) -> dict:
-    region = REGIONS[region_id]
-    series, data_mode = _acquire_live(region_id)
-    if data_mode == MODE_REPLAY:
-        provider_status = series.get("__provider_status__")
-        provider_reason = series.get("__provider_reason__")
-        replay_lead = lead if lead in LEAD_TIMES else 48
-        payload, mode = _replay_timeline(
-            region_id, replay_lead,
-            provider_http_status=provider_status,
-            provider_reason=provider_reason,
-        )
-        return _replay_timeline_entries(
-            region_id, variable, replay_lead, payload, mode,
-            provider_http_status=provider_status,
-            provider_reason=provider_reason,
+class ClientSeriesValidationError(ValueError):
+    """Raised when client-supplied forecast series fails validation."""
+    pass
+
+
+def validate_client_series(region_id: str, variable: str, series: dict) -> None:
+    """Validate client-supplied Open-Meteo forecast series with strict security and physics bounds."""
+    if region_id not in REGIONS:
+        raise ClientSeriesValidationError(f"Unknown region '{region_id}'")
+    if variable not in VARIABLES:
+        raise ClientSeriesValidationError(f"Unknown variable '{variable}'")
+    if not isinstance(series, dict):
+        raise ClientSeriesValidationError("Payload 'series' must be a dictionary")
+
+    canon_reg = REGIONS[region_id]
+    req_coords = series.get("requested_coordinates") or {}
+    if not isinstance(req_coords, dict):
+        raise ClientSeriesValidationError("series.requested_coordinates must be a dictionary")
+
+    req_lat = req_coords.get("lat")
+    req_lon = req_coords.get("lon")
+    if req_lat is None or req_lon is None:
+        raise ClientSeriesValidationError("series.requested_coordinates must contain 'lat' and 'lon'")
+
+    try:
+        f_lat = float(req_lat)
+        f_lon = float(req_lon)
+    except (ValueError, TypeError):
+        raise ClientSeriesValidationError("Coordinates must be numeric floats")
+
+    if abs(f_lat - canon_reg["lat"]) > 0.25 or abs(f_lon - canon_reg["lon"]) > 0.25:
+        raise ClientSeriesValidationError(
+            f"Coordinates ({f_lat:.4f}, {f_lon:.4f}) deviate from canonical region "
+            f"'{region_id}' coordinates ({canon_reg['lat']:.4f}, {canon_reg['lon']:.4f}) by >0.25 deg"
         )
 
+    times = series.get("time")
+    if not isinstance(times, list) or len(times) < 24:
+        raise ClientSeriesValidationError("series.time must be a list with at least 24 timestamps")
+
+    n_times = len(times)
+    for i, t in enumerate(times):
+        if not isinstance(t, str):
+            raise ClientSeriesValidationError(f"Timestamp at index {i} is not a string: {t}")
+        try:
+            datetime.fromisoformat(t.replace("Z", "+00:00"))
+        except Exception:
+            raise ClientSeriesValidationError(f"Invalid timestamp format at index {i}: {t}")
+
+    models = series.get("models")
+    if not isinstance(models, dict):
+        raise ClientSeriesValidationError("series.models must be a dictionary")
+
+    from ..config import VARIABLE_KEYS
+    for mkey in MODEL_KEYS:
+        if mkey not in models:
+            raise ClientSeriesValidationError(f"Missing required model '{mkey}' in series.models")
+        m_dict = models[mkey]
+        if not isinstance(m_dict, dict):
+            raise ClientSeriesValidationError(f"Model '{mkey}' must be a dictionary of variable series")
+
+        for vkey in VARIABLE_KEYS:
+            if vkey not in m_dict:
+                raise ClientSeriesValidationError(f"Model '{mkey}' is missing required variable '{vkey}'")
+            vals = m_dict[vkey]
+            if not isinstance(vals, list) or len(vals) != n_times:
+                raise ClientSeriesValidationError(
+                    f"Model '{mkey}' variable '{vkey}' series length does not match time length ({n_times})"
+                )
+
+            for idx, val in enumerate(vals):
+                if val is None:
+                    continue
+                if not isinstance(val, (int, float)) or math.isnan(val) or math.isinf(val):
+                    raise ClientSeriesValidationError(
+                        f"Model '{mkey}' variable '{vkey}' contains invalid number at index {idx}: {val}"
+                    )
+
+                if vkey == "rainfall" and (val < 0.0 or val > 2000.0):
+                    raise ClientSeriesValidationError(f"Rainfall out of physical bounds [0, 2000] mm at index {idx}: {val}")
+                elif vkey == "wind_speed" and (val < 0.0 or val > 400.0):
+                    raise ClientSeriesValidationError(f"Wind speed out of physical bounds [0, 400] km/h at index {idx}: {val}")
+                elif vkey == "temperature" and (val < -80.0 or val > 70.0):
+                    raise ClientSeriesValidationError(f"Temperature out of physical bounds [-80, 70] C at index {idx}: {val}")
+                elif vkey == "pressure" and (val < 800.0 or val > 1100.0):
+                    raise ClientSeriesValidationError(f"Pressure out of physical bounds [800, 1100] hPa at index {idx}: {val}")
+
+
+def process_series_forecast(
+    region_id: str,
+    variable: str,
+    series: dict,
+    data_mode: str = MODE_LIVE,
+    lead: int = 48,
+) -> dict:
+    """Execute the full VARUNA scientific forecasting pipeline on an in-memory NWP series."""
+    region = REGIONS[region_id]
     now = _now_hour()
     times = series["time"]
     elevation = series.get("elevation_m")
@@ -210,8 +290,8 @@ def _live_timeline(region_id: str, variable: str, lead: int = 48) -> dict:
 
     for t in times[start:]:
         dt = datetime.fromisoformat(t.replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
-        lead = int((dt - now).total_seconds() // 3600)
-        if lead > FORECAST_HORIZON_CAP_H:
+        lead_h = int((dt - now).total_seconds() // 3600)
+        if lead_h > FORECAST_HORIZON_CAP_H:
             break
         idx = times.index(t)
 
@@ -237,7 +317,7 @@ def _live_timeline(region_id: str, variable: str, lead: int = 48) -> dict:
         )
         last_regime = {"index": regime_index, "name": regime_name}
         rows.append({
-            "time": t, "dt": dt, "lead": lead, "member_values": member_values,
+            "time": t, "dt": dt, "lead": lead_h, "member_values": member_values,
             "ens_mean": ens_mean, "ens_spread": ens_spread,
             "regime_index": regime_index, "regime_name": regime_name,
         })
@@ -338,6 +418,55 @@ def _live_timeline(region_id: str, variable: str, lead: int = 48) -> dict:
     }
 
 
+def process_client_forecast(
+    region_id: str,
+    variable: str,
+    series: dict,
+    lead_time_hours: int | None = None,
+) -> dict:
+    """Validate client-supplied live NWP series and run the VARUNA scientific pipeline."""
+    validate_client_series(region_id, variable, series)
+    lead = lead_time_hours if (lead_time_hours is not None and lead_time_hours in OPERATIONAL_LEAD_HOURS) else 48
+    payload = process_series_forecast(region_id, variable, series, data_mode=MODE_LIVE, lead=lead)
+    if lead_time_hours is not None:
+        payload["requested_lead_time_hours"] = lead_time_hours
+
+    # Warm server-side SQLite cache with verified series so legacy server callers benefit
+    try:
+        from ..config import VARIABLE_KEYS
+        from ..providers.cache import CACHE
+        lat = REGIONS[region_id]["lat"]
+        lon = REGIONS[region_id]["lon"]
+        hourly = ",".join(VARIABLES[v]["openmeteo"] for v in VARIABLE_KEYS)
+        cache_key = f"live|{lat:.4f}|{lon:.4f}|{hourly}|8"
+        CACHE.put(cache_key, series, kind="live")
+    except Exception as exc:
+        pass
+
+    return payload
+
+
+def _live_timeline(region_id: str, variable: str, lead: int = 48) -> dict:
+    region = REGIONS[region_id]
+    series, data_mode = _acquire_live(region_id)
+    if data_mode == MODE_REPLAY:
+        provider_status = series.get("__provider_status__")
+        provider_reason = series.get("__provider_reason__")
+        replay_lead = lead if lead in LEAD_TIMES else 48
+        payload, mode = _replay_timeline(
+            region_id, replay_lead,
+            provider_http_status=provider_status,
+            provider_reason=provider_reason,
+        )
+        return _replay_timeline_entries(
+            region_id, variable, replay_lead, payload, mode,
+            provider_http_status=provider_status,
+            provider_reason=provider_reason,
+        )
+
+    return process_series_forecast(region_id, variable, series, data_mode=data_mode, lead=lead)
+
+
 def _replay_timeline_entries(region_id: str, variable: str, lead: int,
                              payload: dict, data_mode: str,
                              *, provider_http_status: int | None = None,
@@ -417,7 +546,7 @@ def forecast_payload(region_id: str, variable: str, lead_time_hours: int | None)
         raise ServiceUnavailable(f"Unknown region '{region_id}'.")
     if variable not in VARIABLES:
         raise ServiceUnavailable(f"Unknown variable '{variable}'.")
-    lead = lead_time_hours if (lead_time_hours is not None and lead_time_hours in LEAD_TIMES) else 48
+    lead = lead_time_hours if (lead_time_hours is not None and lead_time_hours in OPERATIONAL_LEAD_HOURS) else 48
     if lead_time_hours is not None and lead_time_hours > FORECAST_HORIZON_CAP_H:
         payload = _live_timeline(region_id, variable, lead=lead)
         payload["horizon_note"] = (

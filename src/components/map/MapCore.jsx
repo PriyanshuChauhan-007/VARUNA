@@ -1,8 +1,17 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Map as MapLibreMap, NavigationControl } from 'maplibre-gl';
+import { Map as MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useStore } from '../../store/useStore';
 import { MapContext, BASEMAP_STYLES } from './mapContext';
+
+if (typeof window !== 'undefined' && typeof setWorkerUrl === 'function') {
+  try {
+    setWorkerUrl(maplibreWorkerUrl);
+  } catch (e) {
+    // Ignore worker registration fallback
+  }
+}
 
 export default function MapCore({ children }) {
   const containerRef = useRef(null);

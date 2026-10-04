@@ -111,6 +111,7 @@ VARIABLES: dict[str, dict] = {
 VARIABLE_KEYS: list[str] = list(VARIABLES.keys())
 
 LEAD_TIMES: list[int] = [24, 48, 72, 120]
+OPERATIONAL_LEAD_HOURS: list[int] = [24, 48, 72, 120, 168]
 FORECAST_HORIZON_CAP_H = 168
 HORIZON_NOTE = (
     "Forecast horizon is capped at 168 h (7 days). "
@@ -121,6 +122,7 @@ LEAD_TO_PREVIOUS_DAY: dict[int, str] = {
     48: "previous_day2",
     72: "previous_day3",
     120: "previous_day5",
+    168: "previous_day7",
 }
 
 BENCHMARK_WINDOWS: dict[str, tuple[str, str]] = {

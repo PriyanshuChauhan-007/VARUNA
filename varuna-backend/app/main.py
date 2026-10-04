@@ -62,6 +62,7 @@ def root():
             "GET /api/health",
             "GET /api/regions",
             "GET /api/forecast?region=&variable=&lead_time_hours=",
+            "POST /api/forecast/process",
             "GET /api/weights?region=&variable=&lead_time_hours=",
             "POST /api/analyze",
             "GET /api/analyze?region=&variable=&lead_time_hours=",

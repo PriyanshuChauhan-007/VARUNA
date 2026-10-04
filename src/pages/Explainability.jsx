@@ -33,29 +33,28 @@ export default function Explainability() {
       }
 
       setLoading(true);
-      Promise.all([
-        fetchForecast({
-          region: selectedRegionId,
-          variable: selectedVariable,
-          leadTime: selectedLeadTime,
-        }),
-        fetchExplain({
-          region: selectedRegionId,
-          variable: selectedVariable,
-          leadTime: selectedLeadTime,
-        }).catch(() => null),
-      ])
-        .then(([fc, exp]) => {
-          if (!cancelled) {
-            setLiveForecast(fc);
+      fetchForecast({
+        region: selectedRegionId,
+        variable: selectedVariable,
+        leadTime: selectedLeadTime,
+      })
+        .then((fc) => {
+          if (cancelled) return;
+          setLiveForecast(fc);
+          return fetchExplain({
+            region: selectedRegionId,
+            variable: selectedVariable,
+            leadTime: selectedLeadTime,
+          });
+        })
+        .then((exp) => {
+          if (!cancelled && exp) {
             setExplainData(exp);
-            setLoading(false);
           }
+          if (!cancelled) setLoading(false);
         })
         .catch(() => {
           if (!cancelled) {
-            setLiveForecast(null);
-            setExplainData(null);
             setLoading(false);
           }
         });

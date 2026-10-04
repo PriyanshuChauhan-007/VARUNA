@@ -95,14 +95,155 @@ function determineAlertLevel(variableId, value) {
   return { level: 'Low', reason: 'Standard meteorological parameters' };
 }
 
+const OPEN_METEO_BASE = 'https://api.open-meteo.com/v1/forecast';
+
+const MODEL_SLUGS = {
+  ecmwf_ifs: 'ecmwf_ifs025',
+  ecmwf_aifs: 'ecmwf_aifs025_single',
+  ncep_gfs: 'gfs_seamless',
+  dwd_icon: 'icon_seamless',
+};
+
+const VARIABLE_METRIC_MAP = {
+  temperature: 'temperature_2m',
+  rainfall: 'precipitation',
+  wind_speed: 'wind_speed_10m',
+  pressure: 'surface_pressure',
+};
+
+// In-memory cache for normalized Open-Meteo series per region to prevent redundant calls
+const clientSeriesCache = new Map();
+const CLIENT_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
+
 /**
- * Fetch and normalize live multi-model forecast from /api/forecast.
+ * Normalizes a raw Open-Meteo API response item into VARUNA's canonical NWP member series.
+ */
+export function normalizeOpenMeteoPayload(rawItem, region) {
+  const hourly = rawItem.hourly || {};
+  const times = hourly.time || [];
+  const models = {
+    ecmwf_ifs: {},
+    ecmwf_aifs: {},
+    ncep_gfs: {},
+    dwd_icon: {},
+  };
+
+  for (const [mKey, slug] of Object.entries(MODEL_SLUGS)) {
+    for (const [vKey, omName] of Object.entries(VARIABLE_METRIC_MAP)) {
+      const fieldKey = `${omName}_${slug}`;
+      models[mKey][vKey] = hourly[fieldKey] || [];
+    }
+  }
+
+  return {
+    time: times,
+    elevation_m: rawItem.elevation ?? 0,
+    models,
+    requested_coordinates: {
+      lat: Number(region.lat),
+      lon: Number(region.lng || region.lon),
+    },
+    resolved_coordinates: {
+      lat: Number(rawItem.latitude),
+      lon: Number(rawItem.longitude),
+    },
+  };
+}
+
+/**
+ * Fetch Open-Meteo NWP forecasts directly from the browser for a batch of regions.
+ * Uses a single multi-coordinate request to eliminate duplicate upstream traffic.
+ */
+export async function fetchOpenMeteoBatch(regions) {
+  if (!regions || regions.length === 0) return {};
+
+  const now = Date.now();
+  const needed = regions.filter((r) => {
+    const cached = clientSeriesCache.get(r.id);
+    return !cached || now - cached.timestamp > CLIENT_CACHE_TTL_MS;
+  });
+
+  if (needed.length > 0) {
+    const lats = needed.map((r) => r.lat).join(',');
+    const lons = needed.map((r) => r.lng || r.lon).join(',');
+    const models = Object.values(MODEL_SLUGS).join(',');
+    const hourly = Object.values(VARIABLE_METRIC_MAP).join(',');
+
+    const url = `${OPEN_METEO_BASE}?latitude=${lats}&longitude=${lons}&hourly=${hourly}&models=${models}&forecast_days=8&timezone=GMT&wind_speed_unit=kmh`;
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      throw new Error(`Open-Meteo browser fetch failed: HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    const list = Array.isArray(data) ? data : [data];
+
+    for (const rawItem of list) {
+      if (!rawItem) continue;
+      const lat = Number(rawItem.latitude);
+      const lon = Number(rawItem.longitude);
+      let bestDist = Infinity;
+      let matchingRegion = null;
+      for (const r of needed) {
+        const rLat = Number(r.lat);
+        const rLon = Number(r.lng || r.lon);
+        const dist = Math.hypot(lat - rLat, lon - rLon);
+        if (dist < bestDist) {
+          bestDist = dist;
+          matchingRegion = r;
+        }
+      }
+      if (matchingRegion && bestDist <= 1.0) {
+        const series = normalizeOpenMeteoPayload(rawItem, matchingRegion);
+        clientSeriesCache.set(matchingRegion.id, { timestamp: now, series });
+      }
+    }
+  }
+
+  const result = {};
+  for (const r of regions) {
+    const cached = clientSeriesCache.get(r.id);
+    if (cached) result[r.id] = cached.series;
+  }
+  return result;
+}
+
+/**
+ * Fetch and normalize forecast using BROWSER -> OPEN-METEO -> RENDER VARUNA PROCESSING.
+ * If browser direct fetch is unavailable, cleanly falls back to server-side /api/forecast.
  */
 export async function fetchForecast({ region = 'delhi_ncr', variable = 'temperature', leadTime = '48h' }) {
   const leadH = typeof leadTime === 'string'
     ? (leadTime.endsWith('d') ? parseInt(leadTime, 10) * 24 : parseInt(leadTime, 10))
     : (leadTime || 48);
 
+  const regObj = REGIONS.find((r) => r.id === region) || { id: region, lat: 28.6139, lon: 77.2090 };
+
+  // Primary Path: BROWSER -> OPEN-METEO -> RENDER VARUNA PROCESSING
+  try {
+    const seriesMap = await fetchOpenMeteoBatch([regObj]);
+    const series = seriesMap[region];
+    if (series) {
+      const response = await fetch(`${API_BASE}/api/forecast/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          region,
+          variable,
+          lead_time_hours: leadH,
+          series,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return normalizeForecastResponse(data, leadTime);
+      }
+    }
+  } catch (err) {
+    console.warn('Browser direct Open-Meteo fetch failed, falling back to server path:', err);
+  }
+
+  // Fallback Path: Server-side GET /api/forecast
   const params = new URLSearchParams();
   if (region) params.append('region', region);
   if (variable) params.append('variable', variable);
@@ -146,24 +287,20 @@ export function normalizeForecastResponse(raw, requestedLeadTime) {
     ? (requestedLeadTime.endsWith('d') ? parseInt(requestedLeadTime, 10) * 24 : parseInt(requestedLeadTime, 10))
     : (requestedLeadTime || 48);
 
-  // Selected target forecast point: find closest lead_time_hours in timeline
-  const target = timeline.length > 0
-    ? timeline.reduce((prev, curr) => {
-        return Math.abs(curr.lead_time_hours - leadH) < Math.abs(prev.lead_time_hours - leadH)
-          ? curr
-          : prev;
-      }, timeline[0])
-    : {
-        time: issued_at,
-        lead_time_hours: leadH,
-        blend: 0.0,
-        models: { ecmwf_ifs: 0.0, ecmwf_aifs: 0.0, ncep_gfs: 0.0, dwd_icon: 0.0 },
-        weights: { ecmwf_ifs: 25, ecmwf_aifs: 25, ncep_gfs: 25, dwd_icon: 25 },
-      };
+  // Selected target forecast point: require exact match for requested lead
+  const exactTarget = timeline.find((curr) => curr.lead_time_hours === leadH);
+  const isLeadAvailable = Boolean(exactTarget);
+  const target = exactTarget || (timeline.length > 0 ? null : {
+    time: issued_at,
+    lead_time_hours: leadH,
+    blend: 0.0,
+    models: { ecmwf_ifs: 0.0, ecmwf_aifs: 0.0, ncep_gfs: 0.0, dwd_icon: 0.0 },
+    weights: { ecmwf_ifs: 25, ecmwf_aifs: 25, ncep_gfs: 25, dwd_icon: 25 },
+  });
 
-  const members = target.models || {};
-  const weights = target.weights || {};
-  const actualLeadH = target.lead_time_hours ?? leadH;
+  const members = target ? (target.models || {}) : {};
+  const weights = target ? (target.weights || {}) : {};
+  const actualLeadH = exactTarget ? exactTarget.lead_time_hours : null;
 
   // Verify weights sum
   const weightValues = Object.values(weights);
@@ -200,58 +337,59 @@ export function normalizeForecastResponse(raw, requestedLeadTime) {
   const isAdaptive = variable === 'temperature' && weighting_scheme === 'adaptive_xgboost' && !allWeightsEqual;
 
   // Model breakdowns
+  // Model breakdowns
   const models = {
     ifs: {
       id: 'ecmwf_ifs',
       name: CANONICAL_MODEL_NAMES.ecmwf_ifs.name,
       type: CANONICAL_MODEL_NAMES.ecmwf_ifs.type,
-      value: members.ecmwf_ifs ?? 0.0,
+      value: members.ecmwf_ifs ?? null,
       weight: weights.ecmwf_ifs ?? 0,
       leadTimeHours: actualLeadH,
       unit,
-      predictedError: target.predicted_errors?.ecmwf_ifs ?? null,
+      predictedError: target?.predicted_errors?.ecmwf_ifs ?? null,
     },
     aifs: {
       id: 'ecmwf_aifs',
       name: CANONICAL_MODEL_NAMES.ecmwf_aifs.name,
       type: CANONICAL_MODEL_NAMES.ecmwf_aifs.type,
-      value: members.ecmwf_aifs ?? 0.0,
+      value: members.ecmwf_aifs ?? null,
       weight: weights.ecmwf_aifs ?? 0,
       leadTimeHours: actualLeadH,
       unit,
-      predictedError: target.predicted_errors?.ecmwf_aifs ?? null,
+      predictedError: target?.predicted_errors?.ecmwf_aifs ?? null,
     },
     gfs: {
       id: 'ncep_gfs',
       name: CANONICAL_MODEL_NAMES.ncep_gfs.name,
       type: CANONICAL_MODEL_NAMES.ncep_gfs.type,
-      value: members.ncep_gfs ?? 0.0,
+      value: members.ncep_gfs ?? null,
       weight: weights.ncep_gfs ?? 0,
       leadTimeHours: actualLeadH,
       unit,
-      predictedError: target.predicted_errors?.ncep_gfs ?? null,
+      predictedError: target?.predicted_errors?.ncep_gfs ?? null,
     },
     icon: {
       id: 'dwd_icon',
       name: CANONICAL_MODEL_NAMES.dwd_icon.name,
       type: CANONICAL_MODEL_NAMES.dwd_icon.type,
-      value: members.dwd_icon ?? 0.0,
+      value: members.dwd_icon ?? null,
       weight: weights.dwd_icon ?? 0,
       leadTimeHours: actualLeadH,
       unit,
-      predictedError: target.predicted_errors?.dwd_icon ?? null,
+      predictedError: target?.predicted_errors?.dwd_icon ?? null,
     },
     blend: {
       id: 'varuna_blend',
       name: 'VARUNA BLEND',
-      value: target.blend ?? 0.0,
+      value: target?.blend ?? null,
       leadTimeHours: actualLeadH,
       unit,
     },
   };
 
   const whyThisBlend = {
-    topModel: isAdaptive
+    topModel: isAdaptive && isLeadAvailable
       ? {
           key: topKey,
           name: topModelMeta.name,
@@ -264,9 +402,11 @@ export function normalizeForecastResponse(raw, requestedLeadTime) {
           pct: topWeight,
           isDominant: false,
         },
-    explanation: isAdaptive
-      ? `${topModelMeta.name} is allocated the highest weight (${topWeight}%) because the XGBoost meta-model predicted the lowest contextual error for ${regionObj.name} at +${actualLeadH}h lead.`
-      : (weighting_reason || 'Equal-weight fallback across available forecast members. No ML meta-model trained or validated for this variable.'),
+    explanation: !isLeadAvailable
+      ? `Forecast for requested lead +${leadH}h is not available in the source NWP series.`
+      : (isAdaptive
+          ? `${topModelMeta.name} is allocated the highest weight (${topWeight}%) because the XGBoost meta-model predicted the lowest contextual error for ${regionObj.name} at +${actualLeadH}h lead.`
+          : (weighting_reason || 'Equal-weight fallback across available forecast members. No ML meta-model trained or validated for this variable.')),
   };
 
   // Recharts timeseries formatting
@@ -283,7 +423,9 @@ export function normalizeForecastResponse(raw, requestedLeadTime) {
   }));
 
   // Alert level evaluation
-  const alertInfo = determineAlertLevel(variable, target.blend);
+  const alertInfo = (isLeadAvailable && target?.blend !== null && target?.blend !== undefined)
+    ? determineAlertLevel(variable, target.blend)
+    : { level: 'Unavailable', reason: `Forecast point for +${leadH}h lead is unavailable in source NWP series.` };
 
   return {
     region: regionObj,
@@ -293,11 +435,14 @@ export function normalizeForecastResponse(raw, requestedLeadTime) {
       unit,
     },
     dataMode: data_mode,
+    isLeadAvailable,
+    leadAvailable: isLeadAvailable,
+    available: isLeadAvailable,
     initializationTime: issued_at,
-    validTime: target.time || issued_at,
-    leadTime: requestedLeadTime || `+${actualLeadH}h`,
+    validTime: target?.time || null,
+    leadTime: requestedLeadTime || (actualLeadH !== null ? `+${actualLeadH}h` : `+${leadH}h`),
     leadHours: actualLeadH,
-    forecastValue: target.blend,
+    forecastValue: target?.blend ?? null,
     unit,
     alertLevel: alertInfo.level,
     alertReason: alertInfo.reason,
@@ -307,12 +452,45 @@ export function normalizeForecastResponse(raw, requestedLeadTime) {
     whyThisBlend,
     supportedHorizons: ['24h', '48h', '72h', '120h', '7d'],
     availableHorizonHours: timeline.length,
-    horizonNote: horizon_note,
+    horizonNote: isLeadAvailable ? horizon_note : (horizon_note || `Forecast point for +${leadH}h lead is unavailable in source NWP series.`),
     weightingScheme: weighting_scheme,
     weightingReason: weighting_reason,
-    predictedErrors: target.predicted_errors || null,
+    predictedErrors: target?.predicted_errors || null,
     provenance: { attribution, models_used, degraded, validated, weighting_scheme, weighting_reason },
   };
+}
+
+/**
+ * Ensures client has fetched the Open-Meteo series and warmed Render's SQLite cache
+ * so subsequent calls to /api/weights, /api/explain, /api/extremes, or /api/analyze
+ * hit the local cache and never call Open-Meteo from Render (preventing 429 errors).
+ */
+async function ensureServerWarmed(regionId, leadH = 48) {
+  try {
+    let cached = clientSeriesCache.get(regionId);
+    const now = Date.now();
+    if (!cached || now - cached.timestamp > CLIENT_CACHE_TTL_MS) {
+      const regObj = REGIONS.find((r) => r.id === regionId) || { id: regionId, lat: 28.6139, lon: 77.2090 };
+      const seriesMap = await fetchOpenMeteoBatch([regObj]);
+      if (seriesMap[regionId]) {
+        cached = { timestamp: now, series: seriesMap[regionId] };
+      }
+    }
+    if (cached?.series) {
+      await fetch(`${API_BASE}/api/forecast/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          region: regionId,
+          variable: 'temperature',
+          lead_time_hours: leadH,
+          series: cached.series,
+        }),
+      });
+    }
+  } catch {
+    // Best-effort warm
+  }
 }
 
 /**
@@ -322,6 +500,8 @@ export async function fetchWeights({ region = 'delhi_ncr', variable = 'temperatu
   const leadH = typeof leadTime === 'string'
     ? (leadTime.endsWith('d') ? parseInt(leadTime, 10) * 24 : parseInt(leadTime, 10))
     : (leadTime || 48);
+
+  await ensureServerWarmed(region, leadH);
 
   const params = new URLSearchParams({ region, variable, lead_time_hours: leadH });
   const response = await fetch(`${API_BASE}/api/weights?${params.toString()}`);
@@ -352,14 +532,17 @@ export async function fetchSkill({ variable = 'temperature', region = null } = {
 /**
  * Fetch extreme weather alerts from /api/extremes.
  */
-export async function fetchExtremes({ region = 'delhi_ncr', leadTime = '48h' } = {}) {
+export async function fetchExtremes({ region = 'delhi_ncr', leadTime = '48h', simulate = false } = {}) {
   const leadH = typeof leadTime === 'string'
     ? (leadTime.endsWith('d') ? parseInt(leadTime, 10) * 24 : parseInt(leadTime, 10))
     : (leadTime || 48);
 
+  await ensureServerWarmed(region, leadH);
+
   const params = new URLSearchParams();
   if (region) params.append('region', region);
   if (leadH !== null && leadH !== undefined) params.append('lead_time_hours', leadH);
+  if (simulate) params.append('simulate', 'true');
 
   const query = params.toString() ? `?${params.toString()}` : '';
   const response = await fetch(`${API_BASE}/api/extremes${query}`);
@@ -374,6 +557,8 @@ export async function fetchExplain({ region = 'delhi_ncr', variable = 'temperatu
   const leadH = typeof leadTime === 'string'
     ? (leadTime.endsWith('d') ? parseInt(leadTime, 10) * 24 : parseInt(leadTime, 10))
     : (leadTime || 48);
+
+  await ensureServerWarmed(region, leadH);
 
   const params = new URLSearchParams({
     region,
@@ -394,6 +579,8 @@ export async function fetchAnalyze({ region = 'delhi_ncr', variable = 'temperatu
   const leadH = typeof leadTime === 'string'
     ? (leadTime.endsWith('d') ? parseInt(leadTime, 10) * 24 : parseInt(leadTime, 10))
     : (leadTime || 48);
+
+  await ensureServerWarmed(region, leadH);
 
   const response = await fetch(`${API_BASE}/api/analyze`, {
     method: 'POST',
@@ -443,10 +630,64 @@ async function runWithConcurrency(items, limit, fn) {
 }
 
 /**
- * Fetch operational regional forecasts for all 12 configured regions from /api/forecast.
- * Uses controlled parallel requests to keep the UI responsive and prevent backend contention.
+ * Fetch operational regional forecasts for all 12 configured regions.
+ * Uses a single browser-side multi-coordinate Open-Meteo request and a single
+ * POST /api/forecast/process batch call to Render, eliminating provider rate limits.
  */
 export async function fetchRegionalForecasts({ variable = 'temperature', leadTime = '48h' } = {}) {
+  const leadH = typeof leadTime === 'string'
+    ? (leadTime.endsWith('d') ? parseInt(leadTime, 10) * 24 : parseInt(leadTime, 10))
+    : (leadTime || 48);
+
+  // Primary Path: Single-batch browser Open-Meteo fetch + Render batch processing
+  try {
+    const seriesMap = await fetchOpenMeteoBatch(REGIONS);
+    const batch = [];
+    for (const r of REGIONS) {
+      if (seriesMap[r.id]) {
+        batch.push({
+          region: r.id,
+          variable,
+          lead_time_hours: leadH,
+          series: seriesMap[r.id],
+        });
+      }
+    }
+
+    if (batch.length === REGIONS.length) {
+      const response = await fetch(`${API_BASE}/api/forecast/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const results = data.results || [];
+        const resultMap = new Map(results.map((res) => [res.region_id, res]));
+
+        return REGIONS.map((region) => {
+          const raw = resultMap.get(region.id);
+          if (raw) {
+            return {
+              ...region,
+              forecast: normalizeForecastResponse(raw, leadTime),
+              error: null,
+            };
+          }
+          return {
+            ...region,
+            forecast: null,
+            error: 'Region processing failed',
+          };
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Batch browser fetch encountered an issue, falling back to sequential path:', err);
+  }
+
+  // Fallback Path: Sequential requests via fetchForecast
   return runWithConcurrency(REGIONS, 1, async (region) => {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
