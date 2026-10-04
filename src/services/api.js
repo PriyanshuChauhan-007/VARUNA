@@ -10,11 +10,13 @@
  */
 import { REGIONS } from '../data/mockData.js';
 
-const API_BASE = (
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ||
-  (typeof globalThis !== 'undefined' && globalThis.process?.env?.VITE_API_URL) ||
-  ''
-).replace(/\/+$/, '');
+export function getApiBase() {
+  return (
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ||
+    (typeof globalThis !== 'undefined' && globalThis.process?.env?.VITE_API_URL) ||
+    ''
+  ).replace(/\/+$/, '');
+}
 
 const CANONICAL_MODEL_NAMES = {
   ecmwf_ifs: {
@@ -223,7 +225,7 @@ export async function fetchForecast({ region = 'delhi_ncr', variable = 'temperat
     const seriesMap = await fetchOpenMeteoBatch([regObj]);
     const series = seriesMap[region];
     if (series) {
-      const response = await fetch(`${API_BASE}/api/forecast/process`, {
+      const response = await fetch(`${getApiBase()}/api/forecast/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -251,7 +253,7 @@ export async function fetchForecast({ region = 'delhi_ncr', variable = 'temperat
     params.append('lead_time_hours', leadH);
   }
 
-  const url = `${API_BASE}/api/forecast?${params.toString()}`;
+  const url = `${getApiBase()}/api/forecast?${params.toString()}`;
   const response = await fetch(url);
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
@@ -477,7 +479,7 @@ async function ensureServerWarmed(regionId, leadH = 48) {
       }
     }
     if (cached?.series) {
-      await fetch(`${API_BASE}/api/forecast/process`, {
+      await fetch(`${getApiBase()}/api/forecast/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -504,7 +506,7 @@ export async function fetchWeights({ region = 'delhi_ncr', variable = 'temperatu
   await ensureServerWarmed(region, leadH);
 
   const params = new URLSearchParams({ region, variable, lead_time_hours: leadH });
-  const response = await fetch(`${API_BASE}/api/weights?${params.toString()}`);
+  const response = await fetch(`${getApiBase()}/api/weights?${params.toString()}`);
   if (!response.ok) throw new Error(`Weights fetch failed: HTTP ${response.status}`);
   return response.json();
 }
@@ -513,7 +515,7 @@ export async function fetchWeights({ region = 'delhi_ncr', variable = 'temperatu
  * Fetch provider status telemetry from /api/providers/status.
  */
 export async function fetchProvidersStatus() {
-  const response = await fetch(`${API_BASE}/api/providers/status`);
+  const response = await fetch(`${getApiBase()}/api/providers/status`);
   if (!response.ok) throw new Error(`Providers status fetch failed: HTTP ${response.status}`);
   return response.json();
 }
@@ -524,7 +526,7 @@ export async function fetchProvidersStatus() {
 export async function fetchSkill({ variable = 'temperature', region = null } = {}) {
   const params = new URLSearchParams({ variable });
   if (region) params.append('region', region);
-  const response = await fetch(`${API_BASE}/api/skill?${params.toString()}`);
+  const response = await fetch(`${getApiBase()}/api/skill?${params.toString()}`);
   if (!response.ok) throw new Error(`Skill fetch failed: HTTP ${response.status}`);
   return response.json();
 }
@@ -545,7 +547,7 @@ export async function fetchExtremes({ region = 'delhi_ncr', leadTime = '48h', si
   if (simulate) params.append('simulate', 'true');
 
   const query = params.toString() ? `?${params.toString()}` : '';
-  const response = await fetch(`${API_BASE}/api/extremes${query}`);
+  const response = await fetch(`${getApiBase()}/api/extremes${query}`);
   if (!response.ok) throw new Error(`Extremes fetch failed: HTTP ${response.status}`);
   return response.json();
 }
@@ -566,7 +568,7 @@ export async function fetchExplain({ region = 'delhi_ncr', variable = 'temperatu
     lead_time_hours: String(leadH),
   });
 
-  const response = await fetch(`${API_BASE}/api/explain?${params.toString()}`);
+  const response = await fetch(`${getApiBase()}/api/explain?${params.toString()}`);
   if (!response.ok) throw new Error(`Explain fetch failed: HTTP ${response.status}`);
   return response.json();
 }
@@ -582,7 +584,7 @@ export async function fetchAnalyze({ region = 'delhi_ncr', variable = 'temperatu
 
   await ensureServerWarmed(region, leadH);
 
-  const response = await fetch(`${API_BASE}/api/analyze`, {
+  const response = await fetch(`${getApiBase()}/api/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -604,7 +606,7 @@ export const fetchAiAnalysis = fetchAnalyze;
  * Health check from /api/health.
  */
 export async function fetchHealth() {
-  const response = await fetch(`${API_BASE}/api/health`);
+  const response = await fetch(`${getApiBase()}/api/health`);
   if (!response.ok) throw new Error(`Health check failed: HTTP ${response.status}`);
   return response.json();
 }
@@ -655,7 +657,7 @@ export async function fetchRegionalForecasts({ variable = 'temperature', leadTim
     }
 
     if (batch.length === REGIONS.length) {
-      const response = await fetch(`${API_BASE}/api/forecast/process`, {
+      const response = await fetch(`${getApiBase()}/api/forecast/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ batch }),
