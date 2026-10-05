@@ -28,6 +28,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+varuna-backend/.venv/
+venv/
 
 # Runtime Caches & Local Databases
 *.sqlite3
@@ -36,7 +38,6 @@ backend/cache/*.sqlite3
 backend/cache/*.sqlite
 varuna-backend/cache/
 varuna-backend/**/__pycache__/
-
 
 .vercel
 .env*

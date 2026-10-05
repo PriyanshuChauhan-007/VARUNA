@@ -1,0 +1,257 @@
+{
+  "status": "PASS",
+  "checks": {
+    "temporal": {
+      "ok": true,
+      "vmin": "2025-08-01 00:00:00+00:00",
+      "vmax": "2026-08-28 23:00:00+00:00",
+      "lh_min": 0,
+      "lh_max": 191,
+      "lad_min": 0,
+      "lad_max": 7,
+      "n_locs": 127
+    },
+    "spatial": {
+      "ok": true,
+      "n_locations": 127,
+      "lat_range": [
+        8.179,
+        34.165
+      ],
+      "lon_range": [
+        69.6093,
+        94.9084
+      ],
+      "elevation_m_range": [
+        2.0,
+        3502.0
+      ],
+      "admin1_count": 35,
+      "admin1_values": [
+        "Andaman and Nicobar",
+        "Andhra Pradesh",
+        "Assam",
+        "Bihar",
+        "Chandigarh",
+        "Chhattisgarh",
+        "Dadra and Nagar Haveli and Daman and Diu",
+        "Gujarat",
+        "Haryana",
+        "Himachal Pradesh",
+        "Jammu and Kashmir",
+        "Jharkhand",
+        "Karnataka",
+        "Kerala",
+        "Ladakh",
+        "Lakshadweep",
+        "Madhya Pradesh",
+        "Maharashtra",
+        "Manipur",
+        "Meghalaya",
+        "Mizoram",
+        "Nagaland",
+        "National Capital Territory of Delhi",
+        "Odisha",
+        "Puducherry",
+        "Punjab",
+        "Rajasthan",
+        "Sikkim",
+        "Tamil Nadu",
+        "Telangana",
+        "Tripura",
+        "Uttar Pradesh",
+        "Uttarakhand",
+        "West Bengal",
+        "unknown"
+      ]
+    },
+    "value_ranges": {
+      "ok": true,
+      "truth_statistics": {
+        "temperature_2m": [
+          -30.5,
+          45.4
+        ],
+        "precipitation": [
+          0.0,
+          30.6
+        ],
+        "wind_speed_10m": [
+          0.0,
+          48.4
+        ],
+        "relative_humidity_2m": [
+          5,
+          100
+        ]
+      }
+    },
+    "duplicates": {
+      "ok": true,
+      "duplicate_groups": 0
+    },
+    "missingness": {
+      "ok": true,
+      "null_fraction_by_column": {
+        "fc_temperature_2m_gfs_seamless": 0.0,
+        "fc_temperature_2m_ecmwf_ifs025": 0.0,
+        "fc_temperature_2m_icon_seamless": 0.1301023112807464,
+        "fc_temperature_2m_gem_seamless": 0.006599872773536896,
+        "truth_temperature_2m": 0.0,
+        "fc_precipitation_gfs_seamless": 0.0,
+        "fc_precipitation_ecmwf_ifs025": 0.0034192111959287534,
+        "fc_precipitation_icon_seamless": 0.12806138676844783,
+        "fc_precipitation_gem_seamless": 0.005248091603053435,
+        "truth_precipitation": 0.0,
+        "fc_wind_speed_10m_gfs_seamless": 0.0,
+        "fc_wind_speed_10m_ecmwf_ifs025": 0.0,
+        "fc_wind_speed_10m_icon_seamless": 0.125,
+        "fc_wind_speed_10m_gem_seamless": 0.011649173027989821,
+        "truth_wind_speed_10m": 0.0,
+        "fc_relative_humidity_2m_gfs_seamless": 0.0,
+        "fc_relative_humidity_2m_ecmwf_ifs025": 0.0017096055979643767,
+        "fc_relative_humidity_2m_icon_seamless": 0.12704092451229856,
+        "fc_relative_humidity_2m_gem_seamless": 0.004134860050890585,
+        "truth_relative_humidity_2m": 0.0
+      }
+    }
+  },
+  "warnings": [
+    "chunk_misses > 0 may indicate partial API chunks; counted not dropped."
+  ],
+  "ran_at": "2026-09-24T12:40:39.979873+00:00",
+  "raw_files": 127,
+  "raw_total_size_bytes": 129505424,
+  "row_count": 9582912,
+  "column_descriptions": {
+    "lead_age_days": [
+      "Int64",
+      0
+    ],
+    "fc_temperature_2m_gfs_seamless": [
+      "Float64",
+      0
+    ],
+    "fc_temperature_2m_ecmwf_ifs025": [
+      "Float64",
+      0
+    ],
+    "fc_temperature_2m_icon_seamless": [
+      "Float64",
+      1246759
+    ],
+    "fc_temperature_2m_gem_seamless": [
+      "Float64",
+      63246
+    ],
+    "fc_precipitation_gfs_seamless": [
+      "Float64",
+      0
+    ],
+    "fc_precipitation_ecmwf_ifs025": [
+      "Float64",
+      32766
+    ],
+    "fc_precipitation_icon_seamless": [
+      "Float64",
+      1227201
+    ],
+    "fc_precipitation_gem_seamless": [
+      "Float64",
+      50292
+    ],
+    "fc_wind_speed_10m_gfs_seamless": [
+      "Float64",
+      0
+    ],
+    "fc_wind_speed_10m_ecmwf_ifs025": [
+      "Float64",
+      0
+    ],
+    "fc_wind_speed_10m_icon_seamless": [
+      "Float64",
+      1197864
+    ],
+    "fc_wind_speed_10m_gem_seamless": [
+      "Float64",
+      111633
+    ],
+    "fc_relative_humidity_2m_gfs_seamless": [
+      "Int64",
+      0
+    ],
+    "fc_relative_humidity_2m_ecmwf_ifs025": [
+      "Float64",
+      16383
+    ],
+    "fc_relative_humidity_2m_icon_seamless": [
+      "Float64",
+      1217422
+    ],
+    "fc_relative_humidity_2m_gem_seamless": [
+      "Float64",
+      39624
+    ],
+    "truth_temperature_2m": [
+      "Float64",
+      0
+    ],
+    "truth_precipitation": [
+      "Float64",
+      0
+    ],
+    "truth_wind_speed_10m": [
+      "Float64",
+      0
+    ],
+    "truth_relative_humidity_2m": [
+      "Int64",
+      0
+    ],
+    "loc_id": [
+      "String",
+      0
+    ],
+    "lat": [
+      "Float64",
+      0
+    ],
+    "lon": [
+      "Float64",
+      0
+    ],
+    "elevation_m": [
+      "Float64",
+      0
+    ],
+    "admin1": [
+      "String",
+      0
+    ],
+    "chunk_misses": [
+      "Int64",
+      0
+    ],
+    "valid_time": [
+      "Datetime(time_unit='ns', time_zone='UTC')",
+      0
+    ],
+    "lead_hours": [
+      "Int64",
+      0
+    ],
+    "hour_utc": [
+      "Int32",
+      0
+    ],
+    "doy": [
+      "Int32",
+      0
+    ],
+    "month": [
+      "Int32",
+      0
+    ]
+  },
+  "issues": []
+}
