@@ -2,22 +2,28 @@ import { useEffect, useRef } from 'react';
 import { Marker, Popup } from 'maplibre-gl';
 import { useMap } from './mapContext';
 import { useStore } from '../../store/useStore';
-import { REGIONS, RISK_TIERS } from '../../data/mockData.js';
+import { REGIONS, RISK_TIERS, getDeterministicForecast } from '../../data/mockData.js';
 
-export default function ForecastLayer() {
+export default function ForecastLayer({ dotsOnly = false }) {
   const { map, mapReady, flyTo } = useMap() || {};
   const selectedRegionId = useStore((s) => s.selectedRegionId);
   const selectRegion = useStore((s) => s.selectRegion);
   const selectedModelLayer = useStore((s) => s.selectedModelLayer);
   const selectedVariable = useStore((s) => s.selectedVariable);
   const regionalForecasts = useStore((s) => s.regionalForecasts);
+  const effectiveMode = useStore((s) => s.effectiveMode);
 
   const markersRef = useRef([]);
   const popupRef = useRef(null);
+  const initialMountRef = useRef(true);
 
-  // Pan to selected region smoothly
+  // Pan to selected region smoothly when user actively selects a region, but preserve India overview on mount
   useEffect(() => {
     if (!map || !mapReady || !selectedRegionId || !flyTo) return;
+    if (initialMountRef.current) {
+      initialMountRef.current = false;
+      return;
+    }
     const reg = REGIONS.find((r) => r.id === selectedRegionId);
     if (reg) {
       flyTo([reg.lng, reg.lat], Math.max(map.getZoom(), 6.5));
@@ -35,13 +41,90 @@ export default function ForecastLayer() {
     const isVariableMatch = regionalForecasts && regionalForecasts.length > 0 && regionalForecasts[0]?.forecast?.variable?.id === selectedVariable;
     const activeList = isVariableMatch
       ? regionalForecasts
-      : REGIONS.map((r) => ({ ...r, forecast: null }));
+      : REGIONS.map((r) => ({
+          ...r,
+          forecast: (effectiveMode === 'DEMO' || effectiveMode === 'REPLAY')
+            ? getDeterministicForecast(r.id, selectedVariable || 'temperature', '48h', effectiveMode)
+            : null,
+        }));
 
     activeList.forEach((item) => {
       const region = item;
       const forecast = item.forecast;
       const isSelected = region.id === selectedRegionId;
       const color = forecast ? (RISK_TIERS[forecast.alertLevel] || '#16A34A') : '#64748B';
+
+      const el = document.createElement('div');
+      el.className = 'varuna-map-marker';
+      el.style.cursor = 'pointer';
+
+      // ── DOTS ONLY MODE (Clean geographical dots on monitored regions) ──
+      if (dotsOnly) {
+        el.innerHTML = `
+          <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+            ${isSelected ? `
+              <div style="position: absolute; top: -7px; left: -7px; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #38BDF8; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite; pointer-events: none;"></div>
+              <div style="position: absolute; top: -3px; left: -3px; width: 18px; height: 18px; border-radius: 50%; background: rgba(56, 189, 248, 0.25); pointer-events: none;"></div>
+            ` : ''}
+            <div style="
+              width: 12px;
+              height: 12px;
+              border-radius: 50%;
+              background: ${isSelected ? '#38BDF8' : '#0284C7'};
+              border: 2px solid #FFFFFF;
+              box-shadow: 0 0 10px ${isSelected ? 'rgba(56, 189, 248, 0.9)' : 'rgba(2, 132, 199, 0.5)'}, 0 2px 5px rgba(0,0,0,0.5);
+              transition: transform 0.2s ease, background 0.2s ease;
+            "></div>
+            <div style="
+              font-family: 'Inter', sans-serif;
+              font-size: 10px;
+              font-weight: 600;
+              color: #F8FAFC;
+              background: rgba(11, 15, 23, 0.88);
+              padding: 2px 6px;
+              border-radius: 4px;
+              margin-top: 4px;
+              border: 1px solid rgba(255,255,255,0.18);
+              box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+              white-space: nowrap;
+              text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+              pointer-events: none;
+            ">
+              ${region.name.split(' (')[0]}
+            </div>
+          </div>
+        `;
+
+        el.addEventListener('mouseenter', () => {
+          if (popupRef.current) popupRef.current.remove();
+          popupRef.current = new Popup({ offset: 15, closeButton: false })
+            .setLngLat([region.lng, region.lat])
+            .setHTML(`
+              <div style="padding: 8px 12px; font-family: 'Inter', sans-serif; font-size: 11px; background: #0B0F17; color: #FFFFFF; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 14px rgba(0,0,0,0.5);">
+                <div style="font-weight: 700; color: #38BDF8; font-size: 12px; margin-bottom: 2px;">${region.name}</div>
+                <div style="font-size: 10px; color: #94A3B8; margin-bottom: 4px;">${region.state} · ${region.zone}</div>
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #CBD5E1;">${region.lat.toFixed(2)}°N, ${region.lng.toFixed(2)}°E · Elev: ${region.elevation || '—'}</div>
+              </div>
+            `)
+            .addTo(map);
+        });
+
+        el.addEventListener('mouseleave', () => {
+          if (popupRef.current) popupRef.current.remove();
+        });
+
+        el.onclick = () => {
+          selectRegion(region.id);
+          if (flyTo) flyTo([region.lng, region.lat], 8);
+        };
+
+        const marker = new Marker({ element: el })
+          .setLngLat([region.lng, region.lat])
+          .addTo(map);
+
+        markersRef.current.push(marker);
+        return;
+      }
 
       // Pick display value according to selected model layer
       let displayVal = forecast ? forecast.forecastValue : '—';
@@ -54,10 +137,6 @@ export default function ForecastLayer() {
           displayVal = (forecast.models?.icon?.value ?? forecast.models?.dwd_icon?.value) ?? displayVal;
         }
       }
-
-      const el = document.createElement('div');
-      el.className = 'varuna-map-marker';
-      el.style.cursor = 'pointer';
 
       el.innerHTML = `
         <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
@@ -79,7 +158,7 @@ export default function ForecastLayer() {
             transition: transform 0.15s ease;
           ">
             <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: ${color};"></span>
-            <span>${displayVal} <span style="font-size: 9px; opacity: 0.8;">${unit}</span></span>
+            <span>${displayVal}${unit ? ` <span style="font-size: 9px; opacity: 0.8;">${unit}</span>` : ''}</span>
           </div>
           <div style="
             font-family: 'Inter', sans-serif;

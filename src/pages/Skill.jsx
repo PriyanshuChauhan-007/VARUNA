@@ -12,8 +12,7 @@ import {
   Legend,
   Cell,
 } from 'recharts';
-import { useStore } from '../store/useStore';
-import { REGIONS, VARIABLES, getDeterministicForecast } from '../data/mockData.js';
+import { REGIONS, VARIABLES } from '../data/mockData.js';
 import {
   getHeldOutTestMetrics,
   getLeadDegradationCurve,
@@ -63,8 +62,9 @@ export default function Skill() {
     };
   }, [selectedVariable]);
 
-  const forecast = getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime);
-  const { region, variable } = forecast;
+  const region = REGIONS.find((r) => r.id === selectedRegionId) || REGIONS[0];
+  const variable = VARIABLES.find((v) => v.id === selectedVariable) || VARIABLES[0];
+  const unit = variable.unit || '°C';
 
   // Authoritative empirical verification data: live API data if available, with offline report snapshot fallback
   const heldOutMetrics = getHeldOutTestMetrics(skillApiData?.headline?.rows);
@@ -197,17 +197,17 @@ export default function Skill() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
         <div className="p-3.5 bg-[var(--varuna-surface)] border border-[var(--varuna-border)] rounded-[var(--radius-lg)] shadow-xs">
           <span className="text-[10px] font-bold text-[var(--varuna-text-muted)] uppercase block font-data">Blend RMSE</span>
-          <span className="font-data text-2xl font-bold text-[var(--varuna-blue-dark)] block mt-0.5">{heldOutMetrics.blendRmse} {forecast.unit}</span>
+          <span className="font-data text-2xl font-bold text-[var(--varuna-blue-dark)] block mt-0.5">{heldOutMetrics.blendRmse} {unit}</span>
           <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold font-data">-{heldOutMetrics.reductionVsIfs}% vs best NWP</span>
         </div>
         <div className="p-3.5 bg-[var(--varuna-surface)] border border-[var(--varuna-border)] rounded-[var(--radius-lg)] shadow-xs">
           <span className="text-[10px] font-bold text-[var(--varuna-text-muted)] uppercase block font-data">Mean Abs Error (MAE)</span>
-          <span className="font-data text-2xl font-bold text-[var(--varuna-text)] block mt-0.5">{heldOutMetrics.blendMae} {forecast.unit}</span>
+          <span className="font-data text-2xl font-bold text-[var(--varuna-text)] block mt-0.5">{heldOutMetrics.blendMae} {unit}</span>
           <span className="text-[11px] text-[var(--varuna-text-secondary)] font-data">Mean Absolute Error</span>
         </div>
         <div className="p-3.5 bg-[var(--varuna-surface)] border border-[var(--varuna-border)] rounded-[var(--radius-lg)] shadow-xs">
           <span className="text-[10px] font-bold text-[var(--varuna-text-muted)] uppercase block font-data">Systematic Bias</span>
-          <span className="font-data text-2xl font-bold text-emerald-700 dark:text-emerald-400 block mt-0.5">+{heldOutMetrics.blendBias} {forecast.unit}</span>
+          <span className="font-data text-2xl font-bold text-emerald-700 dark:text-emerald-400 block mt-0.5">+{heldOutMetrics.blendBias} {unit}</span>
           <span className="text-[11px] text-[var(--varuna-text-secondary)] font-data">Near-zero residual</span>
         </div>
         <div className="p-3.5 bg-[var(--varuna-surface)] border border-[var(--varuna-border)] rounded-[var(--radius-lg)] shadow-xs">
@@ -243,7 +243,7 @@ export default function Skill() {
                 tick={{ fontSize: 11, fill: 'var(--varuna-text-secondary)', fontFamily: 'var(--font-data)' }}
                 tickLine={false}
                 axisLine={{ stroke: 'var(--varuna-border)' }}
-                unit={` ${forecast.unit}`}
+                unit={` ${unit}`}
               />
               <Tooltip
                 contentStyle={{
@@ -286,7 +286,7 @@ export default function Skill() {
                 tick={{ fontSize: 11, fill: 'var(--varuna-text-secondary)', fontFamily: 'var(--font-data)' }}
                 tickLine={false}
                 axisLine={{ stroke: 'var(--varuna-border)' }}
-                unit={` ${forecast.unit}`}
+                unit={` ${unit}`}
               />
               <Tooltip
                 contentStyle={{
@@ -329,7 +329,7 @@ export default function Skill() {
                 tick={{ fontSize: 11, fill: 'var(--varuna-text-secondary)', fontFamily: 'var(--font-data)' }}
                 tickLine={false}
                 axisLine={{ stroke: 'var(--varuna-border)' }}
-                unit={` ${forecast.unit}`}
+                unit={` ${unit}`}
               />
               <Tooltip
                 contentStyle={{
@@ -363,7 +363,7 @@ export default function Skill() {
             <LineChart data={leadDegradationData} margin={{ top: 12, right: 20, bottom: 16, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--varuna-border)" vertical={false} />
               <XAxis dataKey="lead" tickLine={false} axisLine={{ stroke: 'var(--varuna-border)' }} tick={{ fill: 'var(--varuna-text-secondary)', fontFamily: 'var(--font-data)', fontSize: 11 }} />
-              <YAxis tickLine={false} axisLine={{ stroke: 'var(--varuna-border)' }} unit={` ${forecast.unit}`} tick={{ fill: 'var(--varuna-text-secondary)', fontFamily: 'var(--font-data)', fontSize: 11 }} />
+              <YAxis tickLine={false} axisLine={{ stroke: 'var(--varuna-border)' }} unit={` ${unit}`} tick={{ fill: 'var(--varuna-text-secondary)', fontFamily: 'var(--font-data)', fontSize: 11 }} />
               <Tooltip
                 contentStyle={{
                   backgroundColor: 'var(--varuna-surface)',
@@ -393,7 +393,7 @@ export default function Skill() {
             <BarChart data={testComparisonData} margin={{ top: 12, right: 20, bottom: 16, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--varuna-border)" vertical={false} />
               <XAxis dataKey="model" tickLine={false} axisLine={{ stroke: 'var(--varuna-border)' }} tick={{ fontSize: 10, fill: 'var(--varuna-text-secondary)', fontFamily: 'var(--font-ui)' }} />
-              <YAxis tickLine={false} axisLine={{ stroke: 'var(--varuna-border)' }} unit={` ${forecast.unit}`} tick={{ fill: 'var(--varuna-text-secondary)', fontFamily: 'var(--font-data)', fontSize: 11 }} />
+              <YAxis tickLine={false} axisLine={{ stroke: 'var(--varuna-border)' }} unit={` ${unit}`} tick={{ fill: 'var(--varuna-text-secondary)', fontFamily: 'var(--font-data)', fontSize: 11 }} />
               <Tooltip
                 contentStyle={{
                   backgroundColor: 'var(--varuna-surface)',

@@ -166,7 +166,10 @@ export const useStore = create((set, get) => ({
       const match = regionalForecasts.find((r) => r.id === selectedRegionId);
       if (match?.forecast) return match.forecast;
     }
-    return getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode);
+    if (effectiveMode === 'DEMO' || effectiveMode === 'REPLAY') {
+      return getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode);
+    }
+    return null;
   },
 
   // Helper selector for region list with forecast attached
@@ -178,7 +181,7 @@ export const useStore = create((set, get) => ({
     } else {
       list = REGIONS.map((region) => {
         // Fallback placeholder before initial load resolves
-        const forecast = effectiveMode === 'DEMO'
+        const forecast = (effectiveMode === 'DEMO' || effectiveMode === 'REPLAY')
           ? getDeterministicForecast(region.id, selectedVariable, selectedLeadTime, effectiveMode)
           : null;
         return {

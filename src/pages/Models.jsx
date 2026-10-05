@@ -24,13 +24,18 @@ export default function Models() {
   const setLeadTime = useStore((s) => s.setLeadTime);
   const effectiveMode = useStore((s) => s.effectiveMode);
 
-  // Baseline fallback to guarantee zero blank flash
+  // Only provide deterministic reference if user explicitly selected DEMO or REPLAY mode
   const fallbackForecast = useMemo(() => {
-    return getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime);
-  }, [selectedRegionId, selectedVariable, selectedLeadTime]);
+    if (effectiveMode === 'DEMO' || effectiveMode === 'REPLAY') {
+      return getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode);
+    }
+    return null;
+  }, [selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode]);
 
-  const [liveForecast, setLiveForecast] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [liveForecast, setLiveForecast] = useState(fallbackForecast);
+  const [loading, setLoading] = useState(effectiveMode === 'LIVE');
+  const [isUnavailable, setIsUnavailable] = useState(false);
+  const [unavailableReason, setUnavailableReason] = useState(null);
 
   // Live VARUNA Optimisation & Adaptive Analysis state - INITIAL STATE MUST BE EMPTY
   const [analysisResult, setAnalysisResult] = useState(null);
@@ -43,9 +48,19 @@ export default function Models() {
   // Update background live forecast for comparison matrix
   useEffect(() => {
     let isMounted = true;
+    if (effectiveMode === 'DEMO' || effectiveMode === 'REPLAY') {
+      setLiveForecast(getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode));
+      setLoading(false);
+      setIsUnavailable(false);
+      return;
+    }
+
     if (effectiveMode === 'LIVE') {
       Promise.resolve().then(() => {
-        if (isMounted) setLoading(true);
+        if (isMounted) {
+          setLoading(true);
+          setIsUnavailable(false);
+        }
       });
       fetchForecast({
         region: selectedRegionId,
@@ -55,11 +70,17 @@ export default function Models() {
         .then((data) => {
           if (isMounted) {
             setLiveForecast(data);
+            setIsUnavailable(false);
             setLoading(false);
           }
         })
-        .catch(() => {
-          if (isMounted) setLoading(false);
+        .catch((err) => {
+          if (isMounted) {
+            setLiveForecast(null);
+            setIsUnavailable(true);
+            setUnavailableReason(err.message || 'API unreachable');
+            setLoading(false);
+          }
         });
     }
     return () => {
@@ -86,14 +107,16 @@ export default function Models() {
     }
   }, [selectedRegionId, selectedVariable, selectedLeadTime]);
 
-
   // Active forecast display
   const activeForecast = liveForecast || fallbackForecast;
-  const isAdaptive = activeForecast.weightingScheme === 'adaptive_xgboost' || (selectedVariable === 'temperature' && !activeForecast.weightingScheme);
-  const models = activeForecast.models || fallbackForecast.models;
-  const region = activeForecast.region || fallbackForecast.region;
-  const variable = activeForecast.variable || fallbackForecast.variable;
-  const unit = activeForecast.unit || '°C';
+  const selectedRegion = REGIONS.find((r) => r.id === selectedRegionId) || REGIONS[0];
+  const selectedVarObj = VARIABLES.find((v) => v.id === selectedVariable) || VARIABLES[0];
+
+  const isAdaptive = activeForecast ? (activeForecast.weightingScheme === 'adaptive_xgboost' || (selectedVariable === 'temperature' && !activeForecast.weightingScheme)) : false;
+  const models = activeForecast?.models || {};
+  const region = activeForecast?.region || selectedRegion;
+  const variable = activeForecast?.variable || selectedVarObj;
+  const unit = activeForecast?.unit || selectedVarObj.unit || '°C';
 
   // 5-member operational ensemble table: IFS, AIFS, GFS, ICON, VARUNA BLEND
   // Verified held-out test benchmarks for temperature; truthful unvalidated notice for others
@@ -101,7 +124,15 @@ export default function Models() {
     const isTemp = selectedVariable === 'temperature';
     const prec = variable?.precision ?? 1;
 
-    const fmtVal = (v) => (typeof v === 'number' && !Number.isNaN(v) ? `${v.toFixed(prec)} ${unit}` : '—');
+    const fmtVal = (v) => {
+      if (isUnavailable || !activeForecast) return '—';
+      return (typeof v === 'number' && !Number.isNaN(v) ? `${v.toFixed(prec)} ${unit}` : '—');
+    };
+
+    const fmtWeight = (w) => {
+      if (isUnavailable || !activeForecast) return '—';
+      return `${w ?? 25}%`;
+    };
 
     const ifBenchmark = heldOutMetrics.records.find((r) => r.modelKey === 'ecmwf_ifs');
     const aifsBenchmark = heldOutMetrics.records.find((r) => r.modelKey === 'ecmwf_aifs');
@@ -117,7 +148,7 @@ export default function Models() {
         mae: isTemp ? (ifBenchmark?.mae?.toFixed(3) ?? '0.924') : '—',
         bias: isTemp ? (ifBenchmark?.bias > 0 ? `+${ifBenchmark.bias.toFixed(3)}` : ifBenchmark?.bias?.toFixed(3) ?? '-0.561') : '—',
         correlation: isTemp ? (ifBenchmark?.correlation?.toFixed(3) ?? '0.973') : '—',
-        weight: `${models.ifs?.weight ?? 25}%`,
+        weight: fmtWeight(models.ifs?.weight),
         samples: isTemp ? (ifBenchmark?.samples ?? 4512) : '—',
         sourceCenter: 'ECMWF Open Data',
         isBlend: false,
@@ -129,7 +160,7 @@ export default function Models() {
         mae: isTemp ? (aifsBenchmark?.mae?.toFixed(3) ?? '0.866') : '—',
         bias: isTemp ? (aifsBenchmark?.bias > 0 ? `+${aifsBenchmark.bias.toFixed(3)}` : aifsBenchmark?.bias?.toFixed(3) ?? '+0.510') : '—',
         correlation: isTemp ? (aifsBenchmark?.correlation?.toFixed(3) ?? '0.981') : '—',
-        weight: `${models.aifs?.weight ?? 25}%`,
+        weight: fmtWeight(models.aifs?.weight),
         samples: isTemp ? (aifsBenchmark?.samples ?? 4512) : '—',
         sourceCenter: 'ECMWF Open Data',
         isBlend: false,
@@ -141,7 +172,7 @@ export default function Models() {
         mae: isTemp ? (gfsBenchmark?.mae?.toFixed(3) ?? '1.874') : '—',
         bias: isTemp ? (gfsBenchmark?.bias > 0 ? `+${gfsBenchmark.bias.toFixed(3)}` : gfsBenchmark?.bias?.toFixed(3) ?? '+0.674') : '—',
         correlation: isTemp ? (gfsBenchmark?.correlation?.toFixed(3) ?? '0.930') : '—',
-        weight: `${models.gfs?.weight ?? 25}%`,
+        weight: fmtWeight(models.gfs?.weight),
         samples: isTemp ? (gfsBenchmark?.samples ?? 4512) : '—',
         sourceCenter: 'NOAA NCEP',
         isBlend: false,
@@ -153,7 +184,7 @@ export default function Models() {
         mae: isTemp ? (iconBenchmark?.mae?.toFixed(3) ?? '0.876') : '—',
         bias: isTemp ? (iconBenchmark?.bias > 0 ? `+${iconBenchmark.bias.toFixed(3)}` : iconBenchmark?.bias?.toFixed(3) ?? '+0.056') : '—',
         correlation: isTemp ? (iconBenchmark?.correlation?.toFixed(3) ?? '0.969') : '—',
-        weight: `${models.icon?.weight ?? 25}%`,
+        weight: fmtWeight(models.icon?.weight),
         samples: isTemp ? (iconBenchmark?.samples ?? 4512) : '—',
         sourceCenter: 'DWD Open Data',
         isBlend: false,
@@ -165,13 +196,15 @@ export default function Models() {
         mae: isTemp ? (blendBenchmark?.mae?.toFixed(4) ?? '0.6128') : '—',
         bias: isTemp ? (blendBenchmark?.bias > 0 ? `+${blendBenchmark.bias.toFixed(3)}` : blendBenchmark?.bias?.toFixed(3) ?? '+0.066') : '—',
         correlation: isTemp ? (blendBenchmark?.correlation?.toFixed(4) ?? '0.9840') : '—',
-        weight: isAdaptive ? '100% (Adaptive XGBoost)' : '100% (Equal Consensus Fallback)',
+        weight: isUnavailable || !activeForecast
+          ? '—'
+          : (isAdaptive ? '100% (Adaptive XGBoost)' : '100% (Equal Consensus Fallback)'),
         samples: isTemp ? (blendBenchmark?.samples ?? 4512) : '—',
         sourceCenter: 'VARUNA Adaptive Engine',
         isBlend: true,
       },
     ];
-  }, [models, selectedVariable, isAdaptive, heldOutMetrics, unit, variable?.precision]);
+  }, [models, selectedVariable, isAdaptive, heldOutMetrics, unit, variable?.precision, isUnavailable, activeForecast]);
 
   // Empirical regime verification data from verified Python pipeline
   const regimeVerificationData = getRegionalRegimeVerification();
@@ -225,6 +258,49 @@ export default function Models() {
               </button>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Explicit Live Stream Status Banner */}
+      <div className={`p-3 rounded-[var(--radius-md)] border flex items-center justify-between text-scale-xs transition-colors ${
+        isUnavailable
+          ? 'bg-rose-500/10 border-rose-300 text-rose-900 dark:text-rose-200'
+          : liveForecast
+            ? 'bg-emerald-500/10 border-emerald-300 text-emerald-900 dark:text-emerald-200'
+            : 'bg-[var(--varuna-surface)] border-[var(--varuna-border)] text-[var(--varuna-text-secondary)]'
+      }`}>
+        <div className="flex items-center gap-2">
+          <span className={`w-2.5 h-2.5 rounded-full ${
+            isUnavailable
+              ? 'bg-rose-500'
+              : liveForecast
+                ? 'bg-emerald-500 animate-pulse'
+                : 'bg-[var(--varuna-blue)] animate-pulse'
+          }`} />
+          <span className="font-bold tracking-wide">
+            {isUnavailable
+              ? 'LIVE DATA UNAVAILABLE'
+              : liveForecast
+                ? 'LIVE OPERATIONAL STREAM'
+                : 'CONNECTING TO LIVE BACKEND'}
+          </span>
+          <span className="hidden sm:inline text-[var(--varuna-text-secondary)]">
+            {isUnavailable
+              ? `— Backend offline: ${unavailableReason || 'API unreachable'}. Operational live forecast stream interrupted. Historical benchmarks remain active below.`
+              : liveForecast
+                ? '— Synchronized member trajectories from ECMWF IFS, AIFS, NOAA GFS, DWD ICON via Open-Meteo Gateway'
+                : '— Handshaking with FastAPI /api/forecast gateway...'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {loading && (
+            <span className="text-[11px] font-mono text-[var(--varuna-text-muted)] animate-pulse">
+              Syncing...
+            </span>
+          )}
+          <span className="font-data text-[11px] font-bold px-2 py-0.5 rounded bg-[var(--varuna-surface)] border border-[var(--varuna-border)]">
+            {isUnavailable ? 'UNAVAILABLE' : liveForecast ? 'LIVE 200 OK' : 'CONNECTING'}
+          </span>
         </div>
       </div>
 

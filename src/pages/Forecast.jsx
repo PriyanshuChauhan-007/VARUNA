@@ -33,16 +33,23 @@ export default function Forecast() {
     }
   }, [selectedLeadTime, setLeadTime]);
 
-  // Initialize with deterministic fallback so UI has zero blank flash
+  // Only provide deterministic baseline if user explicitly selected DEMO or REPLAY mode
   const fallbackBaseline = useMemo(() => {
-    return getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime);
-  }, [selectedRegionId, selectedVariable, selectedLeadTime]);
+    if (effectiveMode === 'DEMO' || effectiveMode === 'REPLAY') {
+      return getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode);
+    }
+    return null;
+  }, [selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode]);
 
-  const [forecast, setForecast] = useState(effectiveMode === 'DEMO' ? fallbackBaseline : null);
-  const [loading, setLoading] = useState(effectiveMode !== 'DEMO');
+  const [forecast, setForecast] = useState(fallbackBaseline);
+  const [loading, setLoading] = useState(effectiveMode === 'LIVE');
   const [isLive, setIsLive] = useState(false);
-  const [isFallback, setIsFallback] = useState(effectiveMode === 'DEMO');
-  const [fallbackReason, setFallbackReason] = useState(effectiveMode === 'DEMO' ? 'User-selected DEMO mode active' : null);
+  const [isFallback, setIsFallback] = useState(effectiveMode === 'DEMO' || effectiveMode === 'REPLAY');
+  const [fallbackReason, setFallbackReason] = useState(
+    effectiveMode === 'DEMO' ? 'User-selected DEMO mode active' : (effectiveMode === 'REPLAY' ? 'Archived cycle REPLAY active' : null)
+  );
+  const [isUnavailable, setIsUnavailable] = useState(false);
+  const [unavailableReason, setUnavailableReason] = useState(null);
 
   // Authoritative live data fetch from Python FastAPI backend (/api/forecast)
   useEffect(() => {
@@ -51,13 +58,14 @@ export default function Forecast() {
     Promise.resolve().then(() => {
       if (cancelled) return;
 
-      // If explicit DEMO mode requested by user
-      if (effectiveMode === 'DEMO') {
-        const demoData = getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, 'DEMO');
-        setForecast(demoData);
+      // If explicit DEMO or REPLAY mode requested by user
+      if (effectiveMode === 'DEMO' || effectiveMode === 'REPLAY') {
+        const referenceData = getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode);
+        setForecast(referenceData);
         setIsLive(false);
         setIsFallback(true);
-        setFallbackReason('User-selected DEMO mode active');
+        setIsUnavailable(false);
+        setFallbackReason(effectiveMode === 'DEMO' ? 'User-selected DEMO mode active' : 'Archived cycle REPLAY active');
         setLoading(false);
         return;
       }
@@ -67,25 +75,27 @@ export default function Forecast() {
         region: selectedRegionId,
         variable: selectedVariable,
         leadTime: selectedLeadTime,
-        mode: effectiveMode === 'REPLAY' ? 'REPLAY' : 'LIVE',
+        mode: 'LIVE',
       })
         .then((data) => {
           if (!cancelled) {
             setForecast(data);
             setIsLive(true);
             setIsFallback(false);
+            setIsUnavailable(false);
             setFallbackReason(null);
+            setUnavailableReason(null);
             setLoading(false);
           }
         })
         .catch((err) => {
           if (!cancelled) {
-            // Explicit fallback on network or backend API failure (Phase 9)
-            const fallbackData = getDeterministicForecast(selectedRegionId, selectedVariable, selectedLeadTime, 'DEMO');
-            setForecast(fallbackData);
+            // Operational LIVE failure: strictly do NOT fall back to synthetic data
+            setForecast(null);
             setIsLive(false);
-            setIsFallback(true);
-            setFallbackReason(`Backend offline: ${err.message || 'API unreachable'}. Displaying baseline fallback.`);
+            setIsFallback(false);
+            setIsUnavailable(true);
+            setUnavailableReason(err.message || 'API unreachable');
             setLoading(false);
           }
         });
@@ -97,14 +107,17 @@ export default function Forecast() {
   }, [selectedRegionId, selectedVariable, selectedLeadTime, effectiveMode]);
 
   const displayForecast = forecast || fallbackBaseline;
+  const selectedRegion = REGIONS.find((r) => r.id === selectedRegionId) || REGIONS[0];
+  const selectedVarObj = VARIABLES.find((v) => v.id === selectedVariable) || VARIABLES[0];
+
   const {
-    region = {},
-    variable = {},
+    region = selectedRegion,
+    variable = selectedVarObj,
     models = {},
     timeseries = [],
-    alertLevel = 'NOMINAL',
-    alertReason = '',
-    unit = '',
+    alertLevel = isUnavailable ? 'UNAVAILABLE' : (loading ? 'SYNCING' : 'NOMINAL'),
+    alertReason = isUnavailable ? (unavailableReason || 'Backend API offline') : '',
+    unit = selectedVarObj.unit || '',
     whyThisBlend = {},
     horizonNote = null,
     weightingScheme = 'equal_fallback_untrained',
@@ -199,33 +212,41 @@ export default function Forecast() {
 
       {/* Explicit Data Mode & Status Banner */}
       <div className={`p-3 rounded-[var(--radius-md)] border flex items-center justify-between text-scale-xs transition-colors ${
-        isFallback
-          ? 'bg-amber-500/10 border-amber-300 text-amber-900 dark:text-amber-200'
-          : isLive
-            ? 'bg-emerald-500/10 border-emerald-300 text-emerald-900 dark:text-emerald-200'
-            : 'bg-[var(--varuna-blue-light)] border-[var(--varuna-border-strong)] text-[var(--varuna-blue-dark)]'
+        isUnavailable
+          ? 'bg-rose-500/10 border-rose-300 text-rose-900 dark:text-rose-200'
+          : isFallback
+            ? 'bg-amber-500/10 border-amber-300 text-amber-900 dark:text-amber-200'
+            : isLive
+              ? 'bg-emerald-500/10 border-emerald-300 text-emerald-900 dark:text-emerald-200'
+              : 'bg-[var(--varuna-blue-light)] border-[var(--varuna-border-strong)] text-[var(--varuna-blue-dark)]'
       }`}>
         <div className="flex items-center gap-2">
           <span className={`w-2.5 h-2.5 rounded-full ${
-            isFallback
-              ? 'bg-amber-500'
-              : isLive
-                ? 'bg-emerald-500 animate-pulse'
-                : 'bg-[var(--varuna-blue)] animate-pulse'
+            isUnavailable
+              ? 'bg-rose-500'
+              : isFallback
+                ? 'bg-amber-500'
+                : isLive
+                  ? 'bg-emerald-500 animate-pulse'
+                  : 'bg-[var(--varuna-blue)] animate-pulse'
           }`} />
           <span className="font-bold tracking-wide">
-            {isFallback
-              ? 'REPLAY / DEMO FALLBACK'
-              : isLive
-                ? 'LIVE OPERATIONAL STREAM'
-                : 'CONNECTING TO LIVE BACKEND'}
+            {isUnavailable
+              ? 'LIVE DATA UNAVAILABLE'
+              : isFallback
+                ? 'REPLAY / DEMO REFERENCE'
+                : isLive
+                  ? 'LIVE OPERATIONAL STREAM'
+                  : 'CONNECTING TO LIVE BACKEND'}
           </span>
           <span className="hidden sm:inline text-[var(--varuna-text-secondary)]">
-            {isFallback
-              ? `— ${fallbackReason || 'Baseline fallback active; not live scientific output'}`
-              : isLive
-                ? '— Connected to Python FastAPI /api/forecast (ECMWF IFS, AIFS, NOAA GFS, DWD ICON via Open-Meteo Gateway)'
-                : '— Handshaking with FastAPI /api/forecast gateway...'}
+            {isUnavailable
+              ? `— Backend offline: ${unavailableReason || 'API unreachable'}. Operational live forecast stream interrupted.`
+              : isFallback
+                ? `— ${fallbackReason || 'Reference mode active; not live scientific output'}`
+                : isLive
+                  ? '— Connected to Python FastAPI /api/forecast (ECMWF IFS, AIFS, NOAA GFS, DWD ICON via Open-Meteo Gateway)'
+                  : '— Handshaking with FastAPI /api/forecast gateway...'}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -235,7 +256,7 @@ export default function Forecast() {
             </span>
           )}
           <span className="font-data text-[11px] font-bold px-2 py-0.5 rounded bg-[var(--varuna-surface)] border border-[var(--varuna-border)]">
-            {isFallback ? 'FALLBACK' : isLive ? 'LIVE 200 OK' : 'CONNECTING'}
+            {isUnavailable ? 'UNAVAILABLE' : isFallback ? 'REFERENCE' : isLive ? 'LIVE 200 OK' : 'CONNECTING'}
           </span>
         </div>
       </div>
@@ -286,16 +307,20 @@ export default function Forecast() {
           </div>
           <div className="flex items-baseline gap-1.5 mt-1">
             <span className="font-data text-3xl font-bold text-[var(--varuna-blue-dark)] dark:text-[var(--varuna-blue)]">
-              {models.blend?.value !== undefined ? Number(models.blend.value).toFixed(1) : '--'}
+              {isUnavailable || !displayForecast || models.blend?.value === undefined || models.blend?.value === null ? '—' : Number(models.blend.value).toFixed(1)}
             </span>
-            <span className="text-scale-sm font-semibold text-[var(--varuna-text-secondary)]">
-              {unit}
-            </span>
+            {(!isUnavailable && displayForecast && models.blend?.value !== undefined && models.blend?.value !== null) && (
+              <span className="text-scale-sm font-semibold text-[var(--varuna-text-secondary)]">
+                {unit}
+              </span>
+            )}
           </div>
           <div className="mt-1 text-[11px] text-[var(--varuna-text-secondary)]">
-            {isAdaptive
-              ? `Contextual Hybrid Blend (${formattedLead})`
-              : `Operational Equal-Weight Blend (${formattedLead})`}
+            {isUnavailable
+              ? 'Operational live stream unavailable'
+              : isAdaptive
+                ? `Contextual Hybrid Blend (${formattedLead})`
+                : `Operational Equal-Weight Blend (${formattedLead})`}
           </div>
         </div>
 
@@ -305,13 +330,13 @@ export default function Forecast() {
             Alert Status
           </div>
           <div className="flex items-center gap-2 mt-1">
-            <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: getRiskColor(alertLevel) }} />
+            <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: isUnavailable ? '#EF4444' : getRiskColor(alertLevel) }} />
             <span className="font-data text-2xl font-bold text-[var(--varuna-text)]">
-              {alertLevel}
+              {isUnavailable ? 'UNAVAILABLE' : alertLevel}
             </span>
           </div>
           <div className="mt-1 text-[11px] text-[var(--varuna-text-secondary)] truncate">
-            {alertReason || 'IMD Operational Threshold Monitoring'}
+            {isUnavailable ? (unavailableReason || 'Backend API offline') : (alertReason || 'IMD Operational Threshold Monitoring')}
           </div>
         </div>
 
@@ -321,7 +346,11 @@ export default function Forecast() {
             Top Driving Model
           </div>
           <div className="flex items-baseline gap-1 mt-1">
-            {isAdaptive ? (
+            {isUnavailable || !displayForecast ? (
+              <span className="font-data text-xl md:text-2xl font-bold text-[var(--varuna-text-muted)]">
+                —
+              </span>
+            ) : isAdaptive ? (
               <>
                 <span className="font-data text-2xl font-bold text-[var(--varuna-blue-dark)] dark:text-[var(--varuna-blue)]">
                   {whyThisBlend.topModel?.name || 'ECMWF IFS'}
@@ -342,11 +371,13 @@ export default function Forecast() {
             )}
           </div>
           <div className="mt-1 text-[11px] text-[var(--varuna-text-secondary)] truncate">
-            {isAdaptive
-              ? (whyThisBlend.topModel?.error !== undefined
-                  ? `Est. Contextual Error: ${whyThisBlend.topModel.error} ${unit}`
-                  : `Contextual Error Minimization (${formattedLead})`)
-              : 'Equal-weight fallback across available forecast members.'}
+            {isUnavailable
+              ? 'Contextual error minimization offline'
+              : isAdaptive
+                ? (whyThisBlend.topModel?.error !== undefined
+                    ? `Est. Contextual Error: ${whyThisBlend.topModel.error} ${unit}`
+                    : `Contextual Error Minimization (${formattedLead})`)
+                : 'Equal-weight fallback across available forecast members.'}
           </div>
         </div>
 
@@ -357,14 +388,16 @@ export default function Forecast() {
           </div>
           <div className="flex items-baseline gap-1 mt-1">
             <span className="font-data text-2xl font-bold text-teal-600 dark:text-teal-400">
-              {ensembleSpread}
+              {isUnavailable || !displayForecast ? '—' : ensembleSpread}
             </span>
-            <span className="text-scale-xs text-teal-700 dark:text-teal-300 font-medium font-data ml-1">
-              {unit} spread
-            </span>
+            {(!isUnavailable && displayForecast) && (
+              <span className="text-scale-xs text-teal-700 dark:text-teal-300 font-medium font-data ml-1">
+                {unit} spread
+              </span>
+            )}
           </div>
           <div className="mt-1 text-[11px] text-[var(--varuna-text-secondary)]">
-            {memberValues.length} Canonical Members (IFS, AIFS, GFS, ICON)
+            {isUnavailable ? 'Ensemble telemetry unavailable' : `${memberValues.length} Canonical Members (IFS, AIFS, GFS, ICON)`}
           </div>
         </div>
       </div>
@@ -373,9 +406,25 @@ export default function Forecast() {
       <ChartCard
         title={`Forecast Evolution & Member Trajectories — ${region.name || 'Selected Region'} (${formattedLead})`}
         subtitle={`Synchronous progression of ECMWF IFS, ECMWF AIFS, NOAA GFS, DWD ICON, and VARUNA Blend for ${variable.label || 'Variable'} (${unit})`}
-        badge={`Init: ${displayForecast.initializationTime ? displayForecast.initializationTime.slice(0, 10) : '2026-09-26'} 00z · Horizon: ${formattedLead}`}
+        badge={isUnavailable ? 'STREAM UNAVAILABLE' : `Init: ${displayForecast?.initializationTime ? displayForecast.initializationTime.slice(0, 10) : '2026-09-26'} 00z · Horizon: ${formattedLead}`}
         span="full"
       >
+        {isUnavailable || !displayForecast || timeseries.length === 0 ? (
+          <div className="h-[340px] flex flex-col items-center justify-center text-center p-6 bg-[var(--varuna-surface-soft)] rounded-[var(--radius-md)] border border-dashed border-[var(--varuna-border)]">
+            <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center text-xl font-bold mb-3">
+              ✕
+            </div>
+            <div className="font-bold text-scale-md text-[var(--varuna-text)]">
+              Operational Live Forecast Unavailable
+            </div>
+            <p className="mt-1 text-scale-xs text-[var(--varuna-text-secondary)] max-w-md leading-relaxed">
+              Unable to establish real-time data connection with the VARUNA processing API ({unavailableReason || 'Connection refused'}). Numerical ensemble evolution is withheld until live service connectivity is restored.
+            </p>
+            <div className="mt-4 px-3 py-1 text-[11px] font-data font-semibold text-rose-700 dark:text-rose-300 bg-rose-500/10 rounded-full border border-rose-300 dark:border-rose-800">
+              NO SYNTHETIC FORECAST DISPLAYED
+            </div>
+          </div>
+        ) : (
         <ResponsiveContainer width="100%" height={340}>
           <LineChart data={timeseries} margin={{ top: 16, right: 24, bottom: 20, left: 10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--varuna-border)" vertical={false} />
@@ -453,6 +502,7 @@ export default function Forecast() {
             />
           </LineChart>
         </ResponsiveContainer>
+        )}
       </ChartCard>
 
       {/* Atmospheric Context & Consensus breakdown */}
@@ -513,11 +563,13 @@ export default function Forecast() {
               : `Operational Equal-Weight Ensemble. ML weighting is not yet trained or validated for ${variable.label || selectedVariable}.`
           }
           badge={
-            isFallback
-              ? 'DEMO / FALLBACK'
-              : isAdaptive
-              ? `Total Weight: ${weightsSum}% (Hamilton-Hare Normalized)`
-              : `Total Weight: ${weightsSum}% (Equal Allocation)`
+            isUnavailable
+              ? 'UNAVAILABLE'
+              : isFallback
+                ? 'DEMO / REFERENCE'
+                : isAdaptive
+                  ? `Total Weight: ${weightsSum}% (Hamilton-Hare Normalized)`
+                  : `Total Weight: ${weightsSum}% (Equal Allocation)`
           }
         >
           <div className="space-y-4 pt-1">
@@ -556,9 +608,9 @@ export default function Forecast() {
                 model: models.icon,
               },
             ].map(({ id, name, desc, barBg, model }) => {
-              if (!model) return null;
-              const weightVal = model.weight ?? 0;
-              const valueVal = model.value !== undefined ? Number(model.value).toFixed(1) : '--';
+              if (!model && !isUnavailable) return null;
+              const weightVal = model?.weight ?? 0;
+              const valueVal = (!isUnavailable && displayForecast && model?.value !== undefined && model?.value !== null) ? Number(model.value).toFixed(1) : '—';
               return (
                 <div key={id} className="p-3 bg-[var(--varuna-surface-soft)] rounded-[var(--radius-md)] border border-[var(--varuna-border)]">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
@@ -572,17 +624,17 @@ export default function Forecast() {
                     </div>
                     <div className="flex items-center gap-3 font-data text-scale-xs">
                       <span className="text-[var(--varuna-text)] font-bold">
-                        Forecast: {valueVal} {unit} <span className="text-[var(--varuna-text-muted)] font-normal">({formattedLead})</span>
+                        Forecast: {valueVal}{valueVal !== '—' ? ` ${unit}` : ''} <span className="text-[var(--varuna-text-muted)] font-normal">({formattedLead})</span>
                       </span>
                       <span className="px-2 py-0.5 rounded bg-[var(--varuna-surface)] border border-[var(--varuna-border)] font-bold text-[var(--varuna-text)]">
-                        Weight: {weightVal}%
+                        Weight: {isUnavailable || !displayForecast ? '—' : `${weightVal}%`}
                       </span>
                     </div>
                   </div>
                   <div className="w-full h-2.5 bg-[var(--varuna-surface)] rounded-full overflow-hidden border border-[var(--varuna-border)]">
                     <div
                       className={`h-full ${barBg} rounded-full transition-all`}
-                      style={{ width: `${Math.min(100, Math.max(0, weightVal))}%` }}
+                      style={{ width: isUnavailable || !displayForecast ? '0%' : `${Math.min(100, Math.max(0, weightVal))}%` }}
                     />
                   </div>
                 </div>
@@ -596,28 +648,35 @@ export default function Forecast() {
                   VARUNA Final Blended Forecast
                 </span>
                 <span className="text-[11px] text-[var(--varuna-text-secondary)]">
-                  {isAdaptive
-                    ? 'Contextual synthesis: Σ (Weight × Forecast) / 100'
-                    : 'Arithmetic ensemble mean: Σ (Forecast) / 4 (Equal weights)'}
+                  {isUnavailable
+                    ? 'Operational live stream unavailable'
+                    : isAdaptive
+                      ? 'Contextual synthesis: Σ (Weight × Forecast) / 100'
+                      : 'Arithmetic ensemble mean: Σ (Forecast) / 4 (Equal weights)'}
                 </span>
               </div>
               <div className="font-data font-bold text-[var(--varuna-blue-dark)] dark:text-[var(--varuna-blue)] text-scale-base sm:text-scale-lg">
-                {models.blend?.value !== undefined ? Number(models.blend.value).toFixed(1) : '--'} {unit} <span className="text-scale-xs text-[var(--varuna-text-muted)] font-normal">({formattedLead})</span>
+                {isUnavailable || !displayForecast || models.blend?.value === undefined || models.blend?.value === null
+                  ? '—'
+                  : `${Number(models.blend.value).toFixed(1)} ${unit}`}{' '}
+                <span className="text-scale-xs text-[var(--varuna-text-muted)] font-normal">({formattedLead})</span>
               </div>
             </div>
 
             {/* Explanation box (Phase 10) */}
             <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-scale-xs">
               <span className="font-bold text-[var(--color-text-primary)] block mb-1">
-                {isAdaptive ? 'Why this blend?' : 'Weighting Methodology'}
+                {isUnavailable ? 'Stream Status' : (isAdaptive ? 'Why this blend?' : 'Weighting Methodology')}
               </span>
               <p className="text-[var(--color-text-secondary)] text-[11px] leading-relaxed">
-                {isAdaptive
-                  ? (whyThisBlend.explanation ||
-                    `${whyThisBlend.topModel?.name || 'Top model'} is allocated the highest weight because the XGBoost meta-model predicted the lowest contextual error for this region at ${formattedLead} lead.`)
-                  : (weightingReason ||
-                    whyThisBlend.explanation ||
-                    'Equal-weight fallback across available forecast members. No meta-model trained for this variable yet; equal weights are used and skill is unvalidated.')}
+                {isUnavailable
+                  ? `Live forecast data is currently unavailable (${unavailableReason || 'Backend offline'}). No synthetic forecast values or simulated weights are displayed.`
+                  : isAdaptive
+                    ? (whyThisBlend.explanation ||
+                      `${whyThisBlend.topModel?.name || 'Top model'} is allocated the highest weight because the XGBoost meta-model predicted the lowest contextual error for this region at ${formattedLead} lead.`)
+                    : (weightingReason ||
+                      whyThisBlend.explanation ||
+                      'Equal-weight fallback across available forecast members. No meta-model trained for this variable yet; equal weights are used and skill is unvalidated.')}
               </p>
             </div>
           </div>
