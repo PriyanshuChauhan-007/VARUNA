@@ -12,6 +12,7 @@ import {
   Legend,
   Cell,
 } from 'recharts';
+import { useStore } from '../store/useStore';
 import { REGIONS, VARIABLES } from '../data/mockData.js';
 import {
   getHeldOutTestMetrics,
