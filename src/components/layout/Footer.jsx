@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 
 export default function Footer() {
   return (
-    <footer className="mt-auto border-t border-[var(--varuna-border)] bg-[var(--varuna-surface)] text-[var(--varuna-text)] font-sans transition-colors">
+    <footer className="mt-auto border-t border-[#CBDCE6] dark:border-[#1E334D] bg-[#E7EFF5] dark:bg-[#0B1524] text-[var(--varuna-text)] font-sans transition-colors">
       <div className="max-w-7xl mx-auto px-6 py-12 md:py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12">
           {/* Col 1 & 2: Project Brand & Mission */}
@@ -28,7 +28,7 @@ export default function Footer() {
               Adaptive multi-model meteorological consensus blending ECMWF IFS, ECMWF AIFS, NOAA GFS, and DWD ICON using machine learning error estimation and historical ERA5 reanalysis reference.
             </p>
 
-            <div className="p-3 bg-[var(--varuna-surface-soft)] rounded-[var(--radius-md)] border border-[var(--varuna-border)] text-[11px] font-data text-[var(--varuna-text-secondary)] space-y-0.5">
+            <div className="p-3 bg-white/70 dark:bg-[#121F33]/80 rounded-[var(--radius-md)] border border-[#CBDCE6] dark:border-[#1E334D] text-[11px] font-data text-[var(--varuna-text-secondary)] space-y-0.5 shadow-2xs">
               <div className="flex items-center gap-1.5 font-semibold text-[var(--varuna-text)]">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 <span>Authoritative Scientific Core</span>
@@ -195,7 +195,7 @@ export default function Footer() {
         </div>
 
         {/* Bottom Bar: Copyright & Attribution Notice */}
-        <div className="mt-12 pt-6 border-t border-[var(--varuna-border)] flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] font-data text-[var(--varuna-text-muted)]">
+        <div className="mt-12 pt-6 border-t border-[#CBDCE6] dark:border-[#1E334D] flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] font-data text-[#5C7484] dark:text-[#7A93A6]">
           <div className="flex items-center gap-2">
             <span>Built for Smart India Hackathon 2026</span>
             <span>•</span>

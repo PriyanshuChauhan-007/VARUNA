@@ -1,13 +1,28 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
+import { NAV_SECTIONS } from './NavDrawer';
 
 export default function TopBar() {
+  const location = useLocation();
   const searchQuery = useStore((s) => s.filters.searchQuery);
   const setFilter = useStore((s) => s.setFilter);
   const theme = useStore((s) => s.theme);
   const toggleTheme = useStore((s) => s.toggleTheme);
   const effectiveMode = useStore((s) => s.effectiveMode);
   const toggleNavDrawer = useStore((s) => s.toggleNavDrawer);
+
+  // Derive active category and page label from current path
+  let activeCategory = 'OPERATIONS';
+  let activePageLabel = 'Command Centre';
+  for (const sec of NAV_SECTIONS) {
+    for (const item of sec.items) {
+      if (item.path === location.pathname || (item.path === '/command-centre' && (location.pathname === '/' || location.pathname === '/dashboard' || location.pathname === '/map'))) {
+        activeCategory = sec.category;
+        activePageLabel = item.label;
+        break;
+      }
+    }
+  }
 
   return (
     <header className="h-14 px-3 sm:px-6 bg-[var(--varuna-surface)] border-b border-[var(--varuna-border)] flex items-center justify-between shrink-0 z-30 transition-colors">
@@ -48,6 +63,13 @@ export default function TopBar() {
             </span>
           </div>
         </Link>
+
+        {/* Section Context Breadcrumb (Nirikshan-style Category Anchor) */}
+        <div className="hidden lg:flex items-center gap-1.5 ml-2 pl-3 border-l border-[var(--varuna-border)] text-[11px] font-data">
+          <span className="text-[var(--varuna-text-muted)] uppercase tracking-wider">{activeCategory}</span>
+          <span className="text-[var(--varuna-border-strong)]">/</span>
+          <span className="font-bold text-[var(--varuna-blue-dark)]">{activePageLabel}</span>
+        </div>
 
         {/* Data Mode Pill */}
         <div className="hidden md:flex items-center gap-1.5 ml-2 pl-3 border-l border-[var(--varuna-border)]">

@@ -3,48 +3,63 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useStore } from '../../store/useStore';
 
-const NAV_ITEMS = [
+export const NAV_SECTIONS = [
   {
-    path: '/command-centre',
-    label: 'Command Centre',
-    description: 'Situational awareness & priority map',
-    icon: CommandIcon,
+    category: 'OPERATIONS',
+    items: [
+      {
+        path: '/command-centre',
+        label: 'Command Centre',
+        description: 'Situational awareness & priority map',
+        icon: CommandIcon,
+      },
+      {
+        path: '/forecast',
+        label: 'Forecast Workspace',
+        description: 'Multi-model trajectories & timeline',
+        icon: CloudIcon,
+      },
+      {
+        path: '/extremes',
+        label: 'Extremes Watch',
+        description: 'IMD-calibrated meteorological hazards',
+        icon: AlertIcon,
+      },
+    ],
   },
   {
-    path: '/forecast',
-    label: 'Forecast Workspace',
-    description: 'Multi-model trajectories & timeline',
-    icon: CloudIcon,
+    category: 'ANALYSIS',
+    items: [
+      {
+        path: '/explainability',
+        label: 'Explainability',
+        description: 'Adaptive weights & model attribution',
+        icon: BrainIcon,
+      },
+      {
+        path: '/models',
+        label: 'Models & Optimization',
+        description: '4-NWP physics & adaptive analysis',
+        icon: LayersIcon,
+      },
+      {
+        path: '/skill',
+        label: 'Verification Skill',
+        description: 'Held-out accuracy vs ERA5 reference',
+        icon: ChartIcon,
+      },
+    ],
   },
   {
-    path: '/models',
-    label: 'Models & Optimization',
-    description: 'NWP architectures & adaptive blend',
-    icon: LayersIcon,
-  },
-  {
-    path: '/skill',
-    label: 'Verification Skill',
-    description: 'Held-out accuracy vs ERA5 reference',
-    icon: ChartIcon,
-  },
-  {
-    path: '/extremes',
-    label: 'Extremes Watch',
-    description: 'IMD-calibrated meteorological hazards',
-    icon: AlertIcon,
-  },
-  {
-    path: '/explainability',
-    label: 'Explainability & Attribution',
-    description: 'XGBoost feature importance & context',
-    icon: BrainIcon,
-  },
-  {
-    path: '/system',
-    label: 'System & Gateway Health',
-    description: 'Open-Meteo gateway & pipeline state',
-    icon: GearIcon,
+    category: 'SYSTEM',
+    items: [
+      {
+        path: '/system',
+        label: 'System & Gateway Health',
+        description: 'Open-Meteo gateway & pipeline telemetry',
+        icon: GearIcon,
+      },
+    ],
   },
 ];
 
@@ -135,43 +150,50 @@ export default function NavDrawer() {
               <span className="text-[var(--varuna-blue-dark)] font-semibold">7 MODULES</span>
             </div>
 
-            {/* Navigation Links List */}
-            <nav className="flex-1 overflow-y-auto p-3 space-y-1.5">
-              {NAV_ITEMS.map((item) => {
-                const isActive =
-                  location.pathname === item.path ||
-                  (item.path === '/command-centre' && (location.pathname === '/' || location.pathname === '/dashboard' || location.pathname === '/map'));
-                const Icon = item.icon;
+            {/* Navigation Links List Grouped by Intent */}
+            <nav className="flex-1 overflow-y-auto p-3 space-y-4">
+              {NAV_SECTIONS.map((section) => (
+                <div key={section.category} className="space-y-1">
+                  <div className="px-3 py-1 text-[10px] font-bold tracking-wider text-[var(--varuna-text-muted)] font-data uppercase">
+                    {section.category}
+                  </div>
+                  {section.items.map((item) => {
+                    const isActive =
+                      location.pathname === item.path ||
+                      (item.path === '/command-centre' && (location.pathname === '/' || location.pathname === '/dashboard' || location.pathname === '/map'));
+                    const Icon = item.icon;
 
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    onClick={closeDrawer}
-                    className={`
-                      group relative flex items-start gap-3 px-3.5 py-3 rounded-[var(--radius-md)]
-                      transition-all duration-150
-                      ${
-                        isActive
-                          ? 'bg-[var(--varuna-blue-light)] text-[var(--varuna-blue-dark)] font-bold border-l-4 border-[var(--varuna-blue)] shadow-xs'
-                          : 'bg-transparent text-[var(--varuna-text-secondary)] hover:bg-[var(--varuna-surface-soft)] hover:text-[var(--varuna-text)] font-medium border-l-4 border-transparent'
-                      }
-                    `}
-                  >
-                    <div className={`mt-0.5 shrink-0 ${isActive ? 'text-[var(--varuna-blue)]' : 'text-[var(--varuna-text-muted)] group-hover:text-[var(--varuna-text)]'}`}>
-                      <Icon size={18} active={isActive} />
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-scale-sm leading-snug">
-                        {item.label}
-                      </span>
-                      <span className={`text-[11px] leading-tight mt-0.5 truncate ${isActive ? 'text-[var(--varuna-blue-dark)] opacity-90' : 'text-[var(--varuna-text-muted)]'}`}>
-                        {item.description}
-                      </span>
-                    </div>
-                  </NavLink>
-                );
-              })}
+                    return (
+                      <NavLink
+                        key={item.path}
+                        to={item.path}
+                        onClick={closeDrawer}
+                        className={`
+                          group relative flex items-start gap-3 px-3 py-2.5 rounded-[var(--radius-md)]
+                          transition-all duration-150
+                          ${
+                            isActive
+                              ? 'bg-[var(--varuna-blue-light)] text-[var(--varuna-blue-dark)] font-bold shadow-2xs border-l-3 border-[var(--varuna-blue)]'
+                              : 'bg-transparent text-[var(--varuna-text-secondary)] hover:bg-[var(--varuna-surface-soft)] hover:text-[var(--varuna-text)] font-medium border-l-3 border-transparent'
+                          }
+                        `}
+                      >
+                        <div className={`mt-0.5 shrink-0 ${isActive ? 'text-[var(--varuna-blue)]' : 'text-[var(--varuna-text-muted)] group-hover:text-[var(--varuna-text)]'}`}>
+                          <Icon size={16} active={isActive} />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-scale-xs leading-snug">
+                            {item.label}
+                          </span>
+                          <span className={`text-[10px] leading-tight mt-0.5 truncate ${isActive ? 'text-[var(--varuna-blue-dark)] opacity-90' : 'text-[var(--varuna-text-muted)]'}`}>
+                            {item.description}
+                          </span>
+                        </div>
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              ))}
             </nav>
 
             {/* Drawer Footer */}
